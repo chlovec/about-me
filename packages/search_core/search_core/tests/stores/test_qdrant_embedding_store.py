@@ -6,8 +6,14 @@ import numpy as np
 
 from qdrant_client.models import (
     Distance,
+    FieldCondition,
+    Filter,
+    MatchAny,
+    MatchExcept,
+    MatchValue,
     PointStruct,
     QueryRequest,
+    Range,
     Rrf,
     RrfQuery,
     ScoredPoint,
@@ -26,6 +32,8 @@ from search_core import (
     QdrantStoreConfig,
     SearchConfig,
     SearchMode,
+    SearchResponse,
+    SearchResult,
 )
 
 
@@ -464,3 +472,105 @@ class TestQdrantStoreSearch:
         assert "Qdrant returned a different number of responses than requests" in str(
             exc_info.value
         )
+
+    def test_parse_filters_implicit_in_list_tuple(self, store_instance):
+        filters = {"categories": ["finance", "tech"], "tags": ("internal", "verified")}
+
+        parsed = store_instance._parse_filters(filters)
+
+        assert isinstance(parsed, Filter)
+        assert len(parsed.must) == 2
+
+        # Verify both conditions transformed into MatchAny entries
+        for condition in parsed.must:
+            assert isinstance(condition, FieldCondition)
+            assert isinstance(condition.match, MatchAny)
+            if condition.key == "metadata.categories":
+                assert condition.match.any == ["finance", "tech"]
+            else:
+                assert condition.key == "metadata.tags"
+                assert condition.match.any == ["internal", "verified"]
+
+    def test_parse_filters_all_range_operators(self, store_instance):
+        filters = {"created_at": {"$gt": 100, "$gte": 101, "$lt": 200, "$lte": 201}}
+
+        parsed = store_instance._parse_filters(filters)
+
+        assert isinstance(parsed, Filter)
+        assert len(parsed.must) == 1
+
+        condition = parsed.must[0]
+        assert isinstance(condition, FieldCondition)
+        assert condition.key == "metadata.created_at"
+        assert isinstance(condition.range, Range)
+        assert condition.range.gt == 100
+        assert condition.range.gte == 101
+        assert condition.range.lt == 200
+        assert condition.range.lte == 201
+
+    # def test_parse_filters_exclusion_operators(self, store_instance):
+    #     filters = {
+    #         "status": {"$ne": "archived"},
+    #         "team_id": {"$nin": ["team_a", "team_b"]}
+    #     }
+
+    #     parsed = store_instance._parse_filters(filters)
+
+    #     assert isinstance(parsed, Filter)
+    #     assert len(parsed.must) == 2
+
+    #     for condition in parsed.must:
+    #         assert isinstance(condition, FieldCondition)
+    #         assert isinstance(condition.match, MatchExcept)
+    #         if condition.key == "metadata.status":
+    #             assert getattr(condition.match, "except") == ["archived"]
+    #         else:
+    #             assert condition.key == "metadata.team_id"
+    #             assert condition.match.any == ["team_a", "team_b"]
+
+    def test_parse_filters_explicit_equality_operators(self, store_instance):
+        filters = {
+            "visibility": {"$eq": "public"},
+            "region": {"$in": ["us-east", "us-west"]},
+        }
+
+        parsed = store_instance._parse_filters(filters)
+
+        assert isinstance(parsed, Filter)
+        assert len(parsed.must) == 2
+
+        for condition in parsed.must:
+            assert isinstance(condition, FieldCondition)
+            if condition.key == "metadata.visibility":
+                assert isinstance(condition.match, MatchValue)
+                assert condition.match.value == "public"
+            else:
+                assert condition.key == "metadata.region"
+                assert isinstance(condition.match, MatchAny)
+                assert condition.match.any == ["us-east", "us-west"]
+
+    def test_parse_filters_exclusion_operators(self, store_instance):
+        """Covers lines 157-164: Exclusion operators ($ne, $nin)."""
+        from qdrant_client.models import MatchExcept
+
+        filters = {
+            "status": {"$ne": "archived"},
+            "team_id": {"$nin": ["team_a", "team_b"]},
+        }
+
+        parsed = store_instance._parse_filters(filters)
+
+        assert isinstance(parsed, Filter)
+        assert len(parsed.must) == 2
+
+        for condition in parsed.must:
+            assert isinstance(condition, FieldCondition)
+            assert isinstance(condition.match, MatchExcept)
+
+            if condition.key == "metadata.status":
+                assert condition.match.except_ == [
+                    "archived"
+                ]  # Qdrant Client uses trailing underscore for fields mapping to keywords
+            else:
+                assert condition.key == "metadata.team_id"
+                assert condition.match.except_ == ["team_a", "team_b"]

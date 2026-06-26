@@ -153,11 +153,15 @@ class QdrantEmbeddingStore:
                     # Exclusion operators (MatchExcept requires an 'any' list)
                     elif op == "$ne":
                         must_conditions.append(
-                            FieldCondition(key=key, match=MatchExcept(any=[val]))
+                            FieldCondition(
+                                key=key, match=MatchExcept(**{"except": [val]})
+                            )
                         )
                     elif op == "$nin":
                         must_conditions.append(
-                            FieldCondition(key=key, match=MatchExcept(any=list(val)))
+                            FieldCondition(
+                                key=key, match=MatchExcept(**{"except": list(val)})
+                            )
                         )
 
                     # Explicit equality/inclusion
