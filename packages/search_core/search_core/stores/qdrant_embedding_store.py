@@ -120,6 +120,8 @@ class QdrantEmbeddingStore:
     # Helpers
     # ===========================
 
+    from typing import Any
+
     def _parse_filters(self, filters: dict[str, Any] | None) -> Filter | None:
         """Parses a dictionary into Qdrant match, exclusion, and range filters."""
         if not filters:
@@ -128,62 +130,46 @@ class QdrantEmbeddingStore:
         must_conditions = []
         for k, v in filters.items():
             key = f"metadata.{k}"
-
-            # 1. Handle implicit IN clauses (backward compatibility)
+            
+            # 1. Handle implicit IN clauses
             if isinstance(v, (list, tuple)):
-                must_conditions.append(
-                    FieldCondition(key=key, match=MatchAny(any=list(v)))
-                )
-                continue
-
+                must_conditions.append(FieldCondition(key=key, match=MatchAny(any=list(v))))
+            
             # 2. Handle explicitly defined operators via nested dictionaries
-            if isinstance(v, dict):
-                range_kwargs = {}
-                for op, val in v.items():
-                    # Range operators
-                    if op == "$gt":
-                        range_kwargs["gt"] = val
-                    elif op == "$gte":
-                        range_kwargs["gte"] = val
-                    elif op == "$lt":
-                        range_kwargs["lt"] = val
-                    elif op == "$lte":
-                        range_kwargs["lte"] = val
-
-                    # Exclusion operators (MatchExcept requires an 'any' list)
-                    elif op == "$ne":
-                        must_conditions.append(
-                            FieldCondition(
-                                key=key, match=MatchExcept(**{"except": [val]})
-                            )
-                        )
-                    elif op == "$nin":
-                        must_conditions.append(
-                            FieldCondition(
-                                key=key, match=MatchExcept(**{"except": list(val)})
-                            )
-                        )
-
-                    # Explicit equality/inclusion
-                    elif op == "$eq":
-                        must_conditions.append(
-                            FieldCondition(key=key, match=MatchValue(value=val))
-                        )
-                    elif op == "$in":
-                        must_conditions.append(
-                            FieldCondition(key=key, match=MatchAny(any=list(val)))
-                        )
-
-                if range_kwargs:
-                    must_conditions.append(
-                        FieldCondition(key=key, range=Range(**range_kwargs))
-                    )
-                continue
-
-            # 3. Handle implicit exact matches (backward compatibility)
-            must_conditions.append(FieldCondition(key=key, match=MatchValue(value=v)))
+            elif isinstance(v, dict):
+                must_conditions.extend(self._parse_dict_operators(key, v))
+            
+            # 3. Handle implicit exact matches
+            else:
+                must_conditions.append(FieldCondition(key=key, match=MatchValue(value=v)))
 
         return Filter(must=must_conditions)
+
+
+    def _parse_dict_operators(self, key: str, op_dict: dict[str, Any]) -> list[FieldCondition]:
+        """Helper to parse specific operator dictionaries."""
+        conditions = []
+        range_kwargs = {}
+        
+        # Map simple operators to their respective match/range generators
+        range_ops = {"$gt": "gt", "$gte": "gte", "$lt": "lt", "$lte": "lte"}
+
+        for op, val in op_dict.items():
+            if op in range_ops:
+                range_kwargs[range_ops[op]] = val
+            elif op == "$ne":
+                conditions.append(FieldCondition(key=key, match=MatchExcept(**{"except": [val]})))
+            elif op == "$nin":
+                conditions.append(FieldCondition(key=key, match=MatchExcept(**{"except": list(val)})))
+            elif op == "$eq":
+                conditions.append(FieldCondition(key=key, match=MatchValue(value=val)))
+            elif op == "$in":
+                conditions.append(FieldCondition(key=key, match=MatchAny(any=list(val))))
+
+        if range_kwargs:
+            conditions.append(FieldCondition(key=key, range=Range(**range_kwargs)))
+            
+        return conditions
 
     def _build_search_request(
         self,

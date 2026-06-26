@@ -340,6 +340,16 @@ class TestSaveEmbeddings:
 
 class TestQdrantStoreSearch:
 
+    @pytest.fixture(autouse=True)
+    def setup_default_mock_response(self, store_instance):
+        """Helper fixture to prevent boilerplate code.
+
+        Ensures search() always receives a valid, empty mock response list
+        unless overridden explicitly by a specific test layout.
+        """
+        mock_batch_response = MagicMock(points=[])
+        store_instance.client.query_batch_points.return_value = [mock_batch_response]
+
     def test_search_dense_mode_success(self, store_instance):
         """Verifies correct structural assembly and execution of a dense-only batch query."""
         # Arrange
@@ -351,7 +361,7 @@ class TestQdrantStoreSearch:
         filters = {"category": "finance"}
         config = SearchConfig(mode=SearchMode.DENSE, k=5, return_metadata=["tenant_id"])
 
-        # Mock individual point score results returned by Qdrant
+        # Override mock default to return a rich populated point
         mock_point = ScoredPoint(
             id=1001,
             version=1,
@@ -364,8 +374,6 @@ class TestQdrantStoreSearch:
         )
         mock_batch_response = MagicMock()
         mock_batch_response.points = [mock_point]
-
-        # Ensure batch returns matching request structures length
         store_instance.client.query_batch_points.return_value = [mock_batch_response]
 
         # Act
@@ -385,7 +393,6 @@ class TestQdrantStoreSearch:
         assert match.score == 0.89
         assert match.metadata == {"tenant_id": "abc-123"}
 
-        # Verify underlying query request validation parameters
         store_instance.client.query_batch_points.assert_called_once()
         _, kwargs = store_instance.client.query_batch_points.call_args
         assert kwargs["collection_name"] == "test_collection"
@@ -396,6 +403,14 @@ class TestQdrantStoreSearch:
         assert requests[0].using == "dense"
         assert requests[0].limit == 5
         assert requests[0].with_payload == ["text", "doc_id", "metadata.tenant_id"]
+
+        # Structural Verification of Implicit Match Filter derived through integration
+        filter_obj = requests[0].filter
+        assert isinstance(filter_obj, Filter)
+        assert len(filter_obj.must) == 1
+        assert filter_obj.must[0].key == "metadata.category"
+        assert isinstance(filter_obj.must[0].match, MatchValue)
+        assert filter_obj.must[0].match.value == "finance"
 
     def test_search_hybrid_rrf_mode_success(self, store_instance):
         """Verifies that combined dense and sparse configurations trigger multi-prefetch RRF structures."""
@@ -409,17 +424,9 @@ class TestQdrantStoreSearch:
                 id="q-2", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse
             )
         ]
-
         config = SearchConfig(
-            mode=SearchMode.HYBRID,  # Assuming SearchMode supports HYBRID or equivalent non-DENSE state
-            k=3,
-            prefetch_k=20,
-            rrf_k=50,
-            return_metadata=[],
+            mode=SearchMode.HYBRID, k=3, prefetch_k=20, rrf_k=50, return_metadata=[]
         )
-
-        mock_batch_response = MagicMock(points=[])
-        store_instance.client.query_batch_points.return_value = [mock_batch_response]
 
         # Act
         list(store_instance.search(queries=queries, filters=None, config=config))
@@ -433,17 +440,14 @@ class TestQdrantStoreSearch:
         assert req.prefetch is not None
         assert len(req.prefetch) == 2
 
-        # Validate Dense Prefetch
         assert req.prefetch[0].using == "dense"
         assert req.prefetch[0].limit == 20
 
-        # Validate Sparse Prefetch
         assert req.prefetch[1].using == "sparse"
         assert isinstance(req.prefetch[1].query, QdrantSparseVector)
         assert req.prefetch[1].query.indices == [2, 8]
         assert req.prefetch[1].query.values == [0.4, 0.7]
 
-        # Validate RRF parameters
         assert isinstance(req.query, RrfQuery)
         assert req.query.rrf == Rrf(k=50)
         assert req.limit == 3
@@ -462,7 +466,7 @@ class TestQdrantStoreSearch:
         ]
         config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
-        # Force a length anomaly (2 queries vs 1 response block returned)
+        # Break expectation sequence manually
         store_instance.client.query_batch_points.return_value = [MagicMock()]
 
         # Act & Assert
@@ -473,16 +477,19 @@ class TestQdrantStoreSearch:
             exc_info.value
         )
 
-    def test_parse_filters_implicit_in_list_tuple(self, store_instance):
+    def test_search_with_implicit_in_list_tuple_filters(self, store_instance):
+        """Validates evaluation pipelines transforming simple list structures into MatchAny conditions."""
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {"categories": ["finance", "tech"], "tags": ("internal", "verified")}
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
-        parsed = store_instance._parse_filters(filters)
+        list(store_instance.search(queries=queries, filters=filters, config=config))
 
-        assert isinstance(parsed, Filter)
-        assert len(parsed.must) == 2
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        parsed_filter = kwargs["requests"][0].filter
 
-        # Verify both conditions transformed into MatchAny entries
-        for condition in parsed.must:
+        assert len(parsed_filter.must) == 2
+        for condition in parsed_filter.must:
             assert isinstance(condition, FieldCondition)
             assert isinstance(condition.match, MatchAny)
             if condition.key == "metadata.categories":
@@ -491,16 +498,19 @@ class TestQdrantStoreSearch:
                 assert condition.key == "metadata.tags"
                 assert condition.match.any == ["internal", "verified"]
 
-    def test_parse_filters_all_range_operators(self, store_instance):
+    def test_search_with_all_range_operator_filters(self, store_instance):
+        """Validates evaluation blocks mapping numeric sub-bounds down into isolated Qdrant Range records."""
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {"created_at": {"$gt": 100, "$gte": 101, "$lt": 200, "$lte": 201}}
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
-        parsed = store_instance._parse_filters(filters)
+        list(store_instance.search(queries=queries, filters=filters, config=config))
 
-        assert isinstance(parsed, Filter)
-        assert len(parsed.must) == 1
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        parsed_filter = kwargs["requests"][0].filter
 
-        condition = parsed.must[0]
-        assert isinstance(condition, FieldCondition)
+        assert len(parsed_filter.must) == 1
+        condition = parsed_filter.must[0]
         assert condition.key == "metadata.created_at"
         assert isinstance(condition.range, Range)
         assert condition.range.gt == 100
@@ -508,39 +518,22 @@ class TestQdrantStoreSearch:
         assert condition.range.lt == 200
         assert condition.range.lte == 201
 
-    # def test_parse_filters_exclusion_operators(self, store_instance):
-    #     filters = {
-    #         "status": {"$ne": "archived"},
-    #         "team_id": {"$nin": ["team_a", "team_b"]}
-    #     }
-
-    #     parsed = store_instance._parse_filters(filters)
-
-    #     assert isinstance(parsed, Filter)
-    #     assert len(parsed.must) == 2
-
-    #     for condition in parsed.must:
-    #         assert isinstance(condition, FieldCondition)
-    #         assert isinstance(condition.match, MatchExcept)
-    #         if condition.key == "metadata.status":
-    #             assert getattr(condition.match, "except") == ["archived"]
-    #         else:
-    #             assert condition.key == "metadata.team_id"
-    #             assert condition.match.any == ["team_a", "team_b"]
-
-    def test_parse_filters_explicit_equality_operators(self, store_instance):
+    def test_search_with_explicit_equality_operators(self, store_instance):
+        """Validates translation logic tracking exact match definitions ($eq, $in)."""
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {
             "visibility": {"$eq": "public"},
             "region": {"$in": ["us-east", "us-west"]},
         }
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
-        parsed = store_instance._parse_filters(filters)
+        list(store_instance.search(queries=queries, filters=filters, config=config))
 
-        assert isinstance(parsed, Filter)
-        assert len(parsed.must) == 2
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        parsed_filter = kwargs["requests"][0].filter
 
-        for condition in parsed.must:
-            assert isinstance(condition, FieldCondition)
+        assert len(parsed_filter.must) == 2
+        for condition in parsed_filter.must:
             if condition.key == "metadata.visibility":
                 assert isinstance(condition.match, MatchValue)
                 assert condition.match.value == "public"
@@ -549,28 +542,45 @@ class TestQdrantStoreSearch:
                 assert isinstance(condition.match, MatchAny)
                 assert condition.match.any == ["us-east", "us-west"]
 
-    def test_parse_filters_exclusion_operators(self, store_instance):
-        """Covers lines 157-164: Exclusion operators ($ne, $nin)."""
-        from qdrant_client.models import MatchExcept
-
+    def test_search_with_exclusion_operators(self, store_instance):
+        """Validates translation blocks handling inversions ($ne, $nin)."""
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {
             "status": {"$ne": "archived"},
             "team_id": {"$nin": ["team_a", "team_b"]},
         }
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
-        parsed = store_instance._parse_filters(filters)
+        list(store_instance.search(queries=queries, filters=filters, config=config))
 
-        assert isinstance(parsed, Filter)
-        assert len(parsed.must) == 2
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        parsed_filter = kwargs["requests"][0].filter
 
-        for condition in parsed.must:
-            assert isinstance(condition, FieldCondition)
+        assert len(parsed_filter.must) == 2
+        for condition in parsed_filter.must:
             assert isinstance(condition.match, MatchExcept)
-
             if condition.key == "metadata.status":
-                assert condition.match.except_ == [
-                    "archived"
-                ]  # Qdrant Client uses trailing underscore for fields mapping to keywords
+                assert condition.match.except_ == ["archived"]
             else:
                 assert condition.key == "metadata.team_id"
                 assert condition.match.except_ == ["team_a", "team_b"]
+
+    def test_search_with_unknown_operator_clears_branch_fall_through(
+        self, store_instance
+    ):
+        """Covers branch gap 166->157 via the public interface.
+
+        Injecting an unrecognized nested operator payload ensures that execution paths
+        pass through the final logical check and return safely to the loop initialization structure.
+        """
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        filters = {"price": {"$unknown": "value"}}
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
+
+        list(store_instance.search(queries=queries, filters=filters, config=config))
+
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        parsed_filter = kwargs["requests"][0].filter
+
+        # The unknown key should be skipped entirely, producing an empty list of must requirements
+        assert len(parsed_filter.must) == 0
