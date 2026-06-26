@@ -9,6 +9,7 @@ from qdrant_client.models import (
     SparseVectorParams,
     SparseVector as QdrantSparseVector,
 )
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from search_core import QdrantEmbeddingStore
 
@@ -54,3 +55,29 @@ class TestQdrantEmbeddingStoreInit:
             )
             
             mock_qdrant_client.create_collection.assert_not_called()
+            
+    def test_init_raises_unexpected_response_if_generic_error(self, mock_qdrant_client):
+        mock_qdrant_client.collection_exists.return_value = False
+        
+        expected_message = "Something went entirely wrong"
+        mock_qdrant_client.create_collection.side_effect = UnexpectedResponse(
+            status_code=500,
+            reason_phrase="Internal Error",
+            content=b"Internal Server Error Context",
+            headers={"X-Test-Header": "error"}
+        )
+        
+        # Capture the exception context using 'as exc_info'
+        with pytest.raises(UnexpectedResponse) as exc_info:
+            QdrantEmbeddingStore(
+                client=mock_qdrant_client,
+                collection_name="test_collection",
+                vector_size=128
+            )
+        
+        # Verify the exception contents explicitly
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.reason_phrase == "Internal Error"
+        assert exc_info.value.headers == {"X-Test-Header": "error"}
+        assert exc_info.value.content == b"Internal Server Error Context"
+        

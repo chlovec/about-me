@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "addopts",
+        "minversion",
         "numpy",
         "pytest",
         "pythonpath",

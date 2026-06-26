@@ -14,4 +14,17 @@ members = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
 ]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = [
+    "packages/**/tests",
+    "services/**/tests"
+]
+addopts = "--tb=short --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+parallel = true  # Prevents simultaneous test runs from overriding each other's coverage data
