@@ -249,8 +249,9 @@ class QdrantEmbeddingStore:
     # ===========================
 
     def create_metadata_indexes(self, fields: list[str]) -> None:
+        """Creates payload keyword indexes in parallel for the specified metadata fields."""
         if not fields:
-            return
+            raise ValueError("Cannot create metadata indexes: 'fields' list cannot be empty.")
         
         def _create_index(field_name: str):
             self.client.create_payload_index(

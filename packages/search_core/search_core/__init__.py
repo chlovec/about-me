@@ -34,7 +34,10 @@ from search_core.interfaces import (
     AsyncVectorStore,
 )
 
-from search_core.stores import QdrantEmbeddingStore
+from search_core.stores import (
+    QdrantEmbeddingStore,
+    QdrantStoreConfig
+)
 
 __all__ = [
     "__version__"
