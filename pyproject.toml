@@ -1,0 +1,17 @@
+[project]
+name = "about-me"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Monorepo for all my projects"
+
+[tool.uv.workspace]
+members = [
+    "packages/search_core",
+    "services/search_api",
+    "services/ingestion_service"
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

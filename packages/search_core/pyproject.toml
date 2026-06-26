@@ -1,0 +1,19 @@
+[project]
+name = "search-core"
+version = "0.1.0"
+description = "Core search library"
+requires-python = ">=3.12"
+
+dependencies = [
+    "numpy>=2.5.0",
+    "qdrant-client>=1.18.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["search_core"]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
