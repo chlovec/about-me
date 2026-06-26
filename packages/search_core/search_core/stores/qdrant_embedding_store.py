@@ -52,9 +52,6 @@ class QdrantStoreConfig:
     port: int | None = None
     api_key: str | None = None
 
-    # Workers thread
-    max_workers: int = 16
-
     # Escape hatch for any extra QdrantClient arguments
     client_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -71,13 +68,11 @@ class QdrantEmbeddingStore:
         collection_name: str,
         vector_size: int,
         distance: Distance = Distance.COSINE,
-        max_workers: int = 16,
     ):
         self.client = client
         self.collection_name = collection_name
         self.vector_size = vector_size
         self.distance = distance
-        self.max_workers = max_workers
 
         if not self.client.collection_exists(self.collection_name):
             try:
@@ -119,7 +114,6 @@ class QdrantEmbeddingStore:
             collection_name=config.collection_name,
             vector_size=config.vector_size,
             distance=config.distance,
-            max_workers=config.max_workers,
         )
 
     # ===========================
@@ -208,7 +202,7 @@ class QdrantEmbeddingStore:
                     )
                 )
                 continue
-            
+
             requests.append(
                 QueryRequest(
                     prefetch=[
@@ -217,7 +211,7 @@ class QdrantEmbeddingStore:
                             using="dense",
                             filter=qfilter,
                             limit=config.prefetch_k,
-                            ),
+                        ),
                         Prefetch(
                             query=QdrantSparseVector(
                                 indices=q.sparse_vector.indices,
@@ -248,21 +242,12 @@ class QdrantEmbeddingStore:
     # Indexing
     # ===========================
 
-    def create_metadata_indexes(self, fields: list[str]) -> None:
-        """Creates payload keyword indexes in parallel for the specified metadata fields."""
-        if not fields:
-            raise ValueError("Cannot create metadata indexes: 'fields' list cannot be empty.")
-        
-        def _create_index(field_name: str):
-            self.client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name=f"metadata.{field_name}",
-                field_schema="keyword",
-            )
-
-        max_workers = min(len(fields), self.max_workers)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executor.map(_create_index, fields)
+    def create_metadata_indexes(self, field_name: str) -> None:
+        self.client.create_payload_index(
+            collection_name=self.collection_name,
+            field_name=f"metadata.{field_name}",
+            field_schema="keyword",
+        )
 
     # ===========================
     # Data Ingestion

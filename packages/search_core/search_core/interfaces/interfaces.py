@@ -93,7 +93,7 @@ class VectorStore(Protocol):
 class AsyncVectorStore(Protocol):
     """Asynchronous structural contract defining the requirements for a vector database driver."""
 
-    async def create_metadata_indexes(self, fields: list[str]) -> None:
+    async def create_metadata_indexes(self, field_name: str) -> None:
         """Creates keyword payload indexes for accelerated field filtering asynchronously."""
         ...
 

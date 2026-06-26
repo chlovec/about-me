@@ -2,8 +2,17 @@ import pytest
 
 from unittest.mock import MagicMock, call, patch
 
+import numpy as np
+
 from qdrant_client.models import (
     Distance,
+    PointStruct,
+    QueryRequest,
+    Rrf,
+    RrfQuery,
+    ScoredPoint,
+    UpdateResult,
+    UpdateStatus,
     VectorParams,
     SparseVectorParams,
     SparseVector as QdrantSparseVector,
@@ -11,8 +20,12 @@ from qdrant_client.models import (
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from search_core import (
+    EmbeddedDocument,
+    EmbeddedQuery,
     QdrantEmbeddingStore,
     QdrantStoreConfig,
+    SearchConfig,
+    SearchMode,
 )
 
 
@@ -24,23 +37,25 @@ def mock_qdrant_client():
 
 
 @pytest.fixture
-def store_instance():
-    """Provides a QdrantEmbeddingStore instance with a mocked client."""
-    mock_client = MagicMock()
-    mock_client.collection_exists.return_value = True
-
+def store_instance(mock_qdrant_client):
+    """Provides a QdrantEmbeddingStore instance with a fixed vector size configuration."""
     return QdrantEmbeddingStore(
-        client=mock_client,
+        client=mock_qdrant_client,
         collection_name="test_collection",
-        vector_size=128,
-        max_workers=4,
+        vector_size=3,
     )
+
 
 class TestQdrantEmbeddingStoreConnect:
 
     @patch("search_core.stores.qdrant_embedding_store.QdrantClient")
-    @patch("search_core.stores.qdrant_embedding_store.QdrantEmbeddingStore.__init__", return_value=None)
-    def test_connect_filters_none_and_unpacks_kwargs(self, mock_init, mock_qdrant_client_cls):
+    @patch(
+        "search_core.stores.qdrant_embedding_store.QdrantEmbeddingStore.__init__",
+        return_value=None,
+    )
+    def test_connect_filters_none_and_unpacks_kwargs(
+        self, mock_init, mock_qdrant_client_cls
+    ):
         """Verifies that connect filters out None parameters, merges client_kwargs,
 
         and properly invokes the QdrantClient constructor and internal __init__.
@@ -53,10 +68,9 @@ class TestQdrantEmbeddingStoreConnect:
             url="https://localhost:6333",
             api_key="super-secret-key",
             location=None,  # Should be filtered out
-            host=None,      # Should be filtered out
-            port=None,      # Should be filtered out
-            max_workers=32,
-            client_kwargs={"timeout": 60, "grpc_port": 6334}
+            host=None,  # Should be filtered out
+            port=None,  # Should be filtered out
+            client_kwargs={"timeout": 60, "grpc_port": 6334},
         )
 
         # Act
@@ -67,7 +81,7 @@ class TestQdrantEmbeddingStoreConnect:
             url="https://localhost:6333",
             api_key="super-secret-key",
             timeout=60,
-            grpc_port=6334
+            grpc_port=6334,
         )
 
         # Assert: The class constructor (__init__) received the generated client and config properties
@@ -76,18 +90,19 @@ class TestQdrantEmbeddingStoreConnect:
             collection_name="production_collection",
             vector_size=512,
             distance=Distance.DOT,
-            max_workers=32
         )
-        
+
         assert isinstance(store, QdrantEmbeddingStore)
 
     @patch("search_core.stores.qdrant_embedding_store.QdrantClient")
-    @patch("search_core.stores.qdrant_embedding_store.QdrantEmbeddingStore.__init__", return_value=None)
+    @patch(
+        "search_core.stores.qdrant_embedding_store.QdrantEmbeddingStore.__init__",
+        return_value=None,
+    )
     def test_connect_handles_minimal_config(self, mock_init, mock_qdrant_client_cls):
         """Verifies connect behavior when only mandatory config properties are provided."""
         config = QdrantStoreConfig(
-            collection_name="minimal_collection",
-            vector_size=128
+            collection_name="minimal_collection", vector_size=128
         )
 
         # Act
@@ -102,9 +117,9 @@ class TestQdrantEmbeddingStoreConnect:
             collection_name="minimal_collection",
             vector_size=128,
             distance=Distance.COSINE,  # Default from QdrantStoreConfig
-            max_workers=16            # Default from QdrantStoreConfig
         )
-        
+
+
 class TestQdrantEmbeddingStoreInit:
     def test_init_creates_collection_if_not_exists(self, mock_qdrant_client):
         QdrantEmbeddingStore(
@@ -152,15 +167,16 @@ class TestQdrantEmbeddingStoreInit:
         assert exc_info.value.reason_phrase == "Internal Error"
         assert exc_info.value.headers == {"X-Test-Header": "error"}
         assert exc_info.value.content == b"Internal Server Error Context"
-        
-        
-    def test_init_handles_race_condition_cleanly_when_already_exists(self, mock_qdrant_client):
+
+    def test_init_handles_race_condition_cleanly_when_already_exists(
+        self, mock_qdrant_client
+    ):
         # Simulate the specific cluster race condition error string
         mock_exception = UnexpectedResponse(
             status_code=400,
             reason_phrase="Bad Request",
             content=b"Collection test_collection already exists!",
-            headers={}
+            headers={},
         )
         mock_qdrant_client.create_collection.side_effect = mock_exception
 
@@ -168,9 +184,9 @@ class TestQdrantEmbeddingStoreInit:
         store = QdrantEmbeddingStore(
             client=mock_qdrant_client,
             collection_name="test_collection",
-            vector_size=128
+            vector_size=128,
         )
-        
+
         # Verify it passed line 98 and successfully set up the store instance
         assert store.collection_name == "test_collection"
 
@@ -178,46 +194,273 @@ class TestQdrantEmbeddingStoreInit:
 class TestCreateMetadataIndexes:
 
     def test_create_metadata_indexes_success(self, store_instance):
-        """Verifies that payload indexes are created for every provided field."""
-        fields_to_index = ["user_id", "status", "tenant_id"]
+        """Verifies that payload index is created for the provided field."""
 
         # Act
-        store_instance.create_metadata_indexes(fields_to_index)
+        store_instance.create_metadata_indexes("user_name")
 
-        # Assert each expected payload index call occurred
-        expected_calls = [
-            call(
-                collection_name="test_collection",
-                field_name="metadata.user_id",
-                field_schema="keyword",
-            ),
-            call(
-                collection_name="test_collection",
-                field_name="metadata.status",
-                field_schema="keyword",
-            ),
-            call(
-                collection_name="test_collection",
-                field_name="metadata.tenant_id",
-                field_schema="keyword",
-            ),
-        ]
-        store_instance.client.create_payload_index.assert_has_calls(
-            expected_calls, any_order=True
+        # Assert the expected payload index call occurred
+        store_instance.client.create_payload_index.assert_called_once_with(
+            collection_name="test_collection",
+            field_name="metadata.user_name",
+            field_schema="keyword",
         )
-        assert store_instance.client.create_payload_index.call_count == 3
 
-    @pytest.mark.parametrize("empty_input", [[]])
-    def test_create_metadata_indexes_raises_value_error_if_empty(
-        self, store_instance, empty_input
+
+class TestSaveEmbeddings:
+
+    def test_save_embeddings_dense_only_wait_true(self, store_instance):
+        """Verifies successful upsert of dense-only documents with wait=True."""
+        # Arrange
+        mock_doc = MagicMock(spec=EmbeddedDocument)
+        mock_doc.id = 101
+        mock_doc.text = "Sample text payload"
+        mock_doc.embedding = np.array([0.1, 0.2, 0.3])
+        mock_doc.sparse_vector = None
+        mock_doc.metadata = {"category": "test"}
+
+        documents = [mock_doc]
+
+        # Mock Qdrant upsert response matching wait=True expectation
+        store_instance.client.upsert.return_value = UpdateResult(
+            operation_id=1, status=UpdateStatus.COMPLETED
+        )
+
+        # Act
+        result_count = store_instance.save_embeddings(documents, wait=True)
+
+        # Assert
+        assert result_count == 1
+        mock_doc.validate.assert_called_once_with(store_instance.vector_size)
+
+        # Verify the structure passed to QdrantClient
+        store_instance.client.upsert.assert_called_once_with(
+            collection_name="test_collection",
+            wait=True,
+            points=[
+                PointStruct(
+                    id=101,
+                    vector={"dense": [0.1, 0.2, 0.3]},
+                    payload={
+                        "text": "Sample text payload",
+                        "doc_id": "101",
+                        "metadata": {"category": "test"},
+                    },
+                )
+            ],
+        )
+
+    def test_save_embeddings_hybrid_wait_false(self, store_instance):
+        """Verifies successful upsert of hybrid (dense + sparse) documents with wait=False."""
+        # Arrange
+        mock_doc = MagicMock(spec=EmbeddedDocument)
+        mock_doc.id = 202
+        mock_doc.text = "Hybrid vector text"
+        mock_doc.embedding = np.array([0.9, 0.8, 0.7])
+
+        # Construct sparse vector properties
+        mock_sparse = MagicMock()
+        mock_sparse.indices = [12, 45]
+        mock_sparse.values = [0.35, 0.88]
+        mock_doc.sparse_vector = mock_sparse
+        mock_doc.metadata = {}
+
+        documents = [mock_doc]
+
+        # Mock Qdrant upsert response matching wait=False expectation
+        store_instance.client.upsert.return_value = UpdateResult(
+            operation_id=2, status=UpdateStatus.ACKNOWLEDGED
+        )
+
+        # Act
+        result_count = store_instance.save_embeddings(documents, wait=False)
+
+        # Assert
+        assert result_count == 1
+        mock_doc.validate.assert_called_once_with(store_instance.vector_size)
+
+        # Verify sparse mapping logic transformation
+        store_instance.client.upsert.assert_called_once_with(
+            collection_name="test_collection",
+            wait=False,
+            points=[
+                PointStruct(
+                    id=202,
+                    vector={
+                        "dense": [0.9, 0.8, 0.7],
+                        "sparse": {"indices": [12, 45], "values": [0.35, 0.88]},
+                    },
+                    payload={
+                        "text": "Hybrid vector text",
+                        "doc_id": "202",
+                        "metadata": {},
+                    },
+                )
+            ],
+        )
+
+    @pytest.mark.parametrize(
+        "wait_param, returned_status",
+        [
+            (True, UpdateStatus.ACKNOWLEDGED),
+            (False, UpdateStatus.COMPLETED),
+        ],
+    )
+    def test_save_embeddings_status_mismatch_raises_runtime_error(
+        self, store_instance, wait_param, returned_status
     ):
-        """Verifies that a ValueError is raised when an empty fields list is provided."""
+        """Ensures a RuntimeError is thrown if Qdrant reports a status mismatch."""
+        # Arrange
+        mock_doc = MagicMock(spec=EmbeddedDocument)
+        mock_doc.id = 500
+        mock_doc.text = "Error vector text"
+        mock_doc.embedding = np.array([0.0, 0.0, 0.0])
+        mock_doc.sparse_vector = None
+        mock_doc.metadata = {}
+
+        store_instance.client.upsert.return_value = UpdateResult(
+            operation_id=99, status=returned_status
+        )
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
-            store_instance.create_metadata_indexes(empty_input)
+        with pytest.raises(RuntimeError) as exc_info:
+            store_instance.save_embeddings([mock_doc], wait=wait_param)
 
-        # Confirm exception context details
-        assert "fields' list cannot be empty" in str(exc_info.value)
-        # Verify the underlying execution was halted immediately and no indexing client was called
-        store_instance.client.create_payload_index.assert_not_called()
+        # Explicitly verify the error format matches the implementation message
+        assert f"Upsert failed with status={returned_status}" in str(exc_info.value)
+
+
+class TestQdrantStoreSearch:
+
+    def test_search_dense_mode_success(self, store_instance):
+        """Verifies correct structural assembly and execution of a dense-only batch query."""
+        # Arrange
+        queries = [
+            EmbeddedQuery(
+                id="q-1", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None
+            )
+        ]
+        filters = {"category": "finance"}
+        config = SearchConfig(mode=SearchMode.DENSE, k=5, return_metadata=["tenant_id"])
+
+        # Mock individual point score results returned by Qdrant
+        mock_point = ScoredPoint(
+            id=1001,
+            version=1,
+            score=0.89,
+            payload={
+                "text": "Dense response text matching query",
+                "doc_id": "doc-1001",
+                "metadata": {"tenant_id": "abc-123"},
+            },
+        )
+        mock_batch_response = MagicMock()
+        mock_batch_response.points = [mock_point]
+
+        # Ensure batch returns matching request structures length
+        store_instance.client.query_batch_points.return_value = [mock_batch_response]
+
+        # Act
+        results = list(
+            store_instance.search(queries=queries, filters=filters, config=config)
+        )
+
+        # Assert
+        assert len(results) == 1
+        response = results[0]
+        assert response.id == "q-1"
+        assert len(response.matches) == 1
+
+        match = response.matches[0]
+        assert match.id == "doc-1001"
+        assert match.text == "Dense response text matching query"
+        assert match.score == 0.89
+        assert match.metadata == {"tenant_id": "abc-123"}
+
+        # Verify underlying query request validation parameters
+        store_instance.client.query_batch_points.assert_called_once()
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        assert kwargs["collection_name"] == "test_collection"
+
+        requests = kwargs["requests"]
+        assert len(requests) == 1
+        assert isinstance(requests[0], QueryRequest)
+        assert requests[0].using == "dense"
+        assert requests[0].limit == 5
+        assert requests[0].with_payload == ["text", "doc_id", "metadata.tenant_id"]
+
+    def test_search_hybrid_rrf_mode_success(self, store_instance):
+        """Verifies that combined dense and sparse configurations trigger multi-prefetch RRF structures."""
+        # Arrange
+        mock_sparse = MagicMock()
+        mock_sparse.indices = [2, 8]
+        mock_sparse.values = [0.4, 0.7]
+
+        queries = [
+            EmbeddedQuery(
+                id="q-2", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse
+            )
+        ]
+
+        config = SearchConfig(
+            mode=SearchMode.HYBRID,  # Assuming SearchMode supports HYBRID or equivalent non-DENSE state
+            k=3,
+            prefetch_k=20,
+            rrf_k=50,
+            return_metadata=[],
+        )
+
+        mock_batch_response = MagicMock(points=[])
+        store_instance.client.query_batch_points.return_value = [mock_batch_response]
+
+        # Act
+        list(store_instance.search(queries=queries, filters=None, config=config))
+
+        # Assert
+        store_instance.client.query_batch_points.assert_called_once()
+        _, kwargs = store_instance.client.query_batch_points.call_args
+        requests = kwargs["requests"]
+
+        req = requests[0]
+        assert req.prefetch is not None
+        assert len(req.prefetch) == 2
+
+        # Validate Dense Prefetch
+        assert req.prefetch[0].using == "dense"
+        assert req.prefetch[0].limit == 20
+
+        # Validate Sparse Prefetch
+        assert req.prefetch[1].using == "sparse"
+        assert isinstance(req.prefetch[1].query, QdrantSparseVector)
+        assert req.prefetch[1].query.indices == [2, 8]
+        assert req.prefetch[1].query.values == [0.4, 0.7]
+
+        # Validate RRF parameters
+        assert isinstance(req.query, RrfQuery)
+        assert req.query.rrf == Rrf(k=50)
+        assert req.limit == 3
+
+    def test_search_mismatched_response_count_raises_runtime_error(
+        self, store_instance
+    ):
+        """Ensures that if the internal response array size deviates from the submitted batch size,
+
+        a RuntimeError terminates processing instantly.
+        """
+        # Arrange
+        queries = [
+            EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3])),
+            EmbeddedQuery(id="q-2", embedding=np.array([0.4, 0.5, 0.6])),
+        ]
+        config = SearchConfig(mode=SearchMode.DENSE, k=5)
+
+        # Force a length anomaly (2 queries vs 1 response block returned)
+        store_instance.client.query_batch_points.return_value = [MagicMock()]
+
+        # Act & Assert
+        with pytest.raises(RuntimeError) as exc_info:
+            list(store_instance.search(queries=queries, filters=None, config=config))
+
+        assert "Qdrant returned a different number of responses than requests" in str(
+            exc_info.value
+        )
