@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "addopts",
+        "htmlcov",
         "minversion",
         "numpy",
         "pytest",

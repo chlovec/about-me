@@ -21,3 +21,8 @@ frontend-ui/node_modules/
 
 # Go
 bin/
+
+# Test Coverage
+**/.coverage
+**/htmlcov/
+**/coverage.xml
