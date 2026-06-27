@@ -345,7 +345,7 @@ class TestQdrantStoreSearch:
     def test_search_dense_mode_success(self, store_instance):
         """Verifies correct structural assembly and execution of a dense-only batch query."""
         # Arrange
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None)]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None)]
         filters = {"category": "finance"}
         config = SearchConfig(mode=SearchMode.DENSE, k=5, return_metadata=["tenant_id"])
 
@@ -406,7 +406,7 @@ class TestQdrantStoreSearch:
         mock_sparse.values = [0.4, 0.7]
 
         queries = [
-            EmbeddedQuery(id="q-2", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse)
+            EmbeddedQuery(id="q-2", text="text-query", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse)
         ]
         config = SearchConfig(
             mode=SearchMode.HYBRID, k=3, prefetch_k=20, rrf_k=50, return_metadata=[]
@@ -443,8 +443,8 @@ class TestQdrantStoreSearch:
         """
         # Arrange
         queries = [
-            EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3])),
-            EmbeddedQuery(id="q-2", embedding=np.array([0.4, 0.5, 0.6])),
+            EmbeddedQuery(id="q-1", text="text-query-1", embedding=np.array([0.1, 0.2, 0.3])),
+            EmbeddedQuery(id="q-2", text="text-query-2", embedding=np.array([0.4, 0.5, 0.6])),
         ]
         config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
@@ -462,7 +462,7 @@ class TestQdrantStoreSearch:
 
     def test_search_with_implicit_in_list_tuple_filters(self, store_instance):
         """Validates evaluation pipelines transforming simple list structures into MatchAny conditions."""
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {"categories": ["finance", "tech"], "tags": ("internal", "verified")}
         config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
@@ -483,7 +483,7 @@ class TestQdrantStoreSearch:
 
     def test_search_with_all_range_operator_filters(self, store_instance):
         """Validates evaluation blocks mapping numeric sub-bounds down into isolated Qdrant Range records."""
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {"created_at": {"$gt": 100, "$gte": 101, "$lt": 200, "$lte": 201}}
         config = SearchConfig(mode=SearchMode.DENSE, k=5)
 
@@ -503,7 +503,7 @@ class TestQdrantStoreSearch:
 
     def test_search_with_explicit_equality_operators(self, store_instance):
         """Validates translation logic tracking exact match definitions ($eq, $in)."""
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {
             "visibility": {"$eq": "public"},
             "region": {"$in": ["us-east", "us-west"]},
@@ -527,7 +527,7 @@ class TestQdrantStoreSearch:
 
     def test_search_with_exclusion_operators(self, store_instance):
         """Validates translation blocks handling inversions ($ne, $nin)."""
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {
             "status": {"$ne": "archived"},
             "team_id": {"$nin": ["team_a", "team_b"]},
@@ -554,7 +554,7 @@ class TestQdrantStoreSearch:
         Injecting an unrecognized nested operator payload ensures that execution paths
         pass through the final logical check and return safely to the loop initialization structure.
         """
-        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]))]
+        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]))]
         filters = {"price": {"$unknown": "value"}}
         config = SearchConfig(mode=SearchMode.DENSE, k=5)
 

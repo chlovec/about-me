@@ -90,8 +90,8 @@ class EmbeddedQuery:
     """Query after feature extraction (dense + sparse)."""
 
     id: str
+    text: str
     embedding: Vector | None
-    text: str = ""
     sparse_vector: SparseVector | None = None
 
 
