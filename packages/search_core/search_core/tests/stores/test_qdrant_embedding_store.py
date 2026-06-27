@@ -1,9 +1,9 @@
-import pytest
-
-from unittest.mock import MagicMock, call, patch
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-
+import pytest
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import (
     Distance,
     FieldCondition,
@@ -17,13 +17,14 @@ from qdrant_client.models import (
     Rrf,
     RrfQuery,
     ScoredPoint,
+    SparseVectorParams,
     UpdateResult,
     UpdateStatus,
     VectorParams,
-    SparseVectorParams,
+)
+from qdrant_client.models import (
     SparseVector as QdrantSparseVector,
 )
-from qdrant_client.http.exceptions import UnexpectedResponse
 
 from search_core import (
     EmbeddedDocument,
@@ -32,9 +33,10 @@ from search_core import (
     QdrantStoreConfig,
     SearchConfig,
     SearchMode,
-    SearchResponse,
-    SearchResult,
 )
+
+# Shared assertion runner without modifying class inheritance
+tc = TestCase()
 
 
 @pytest.fixture
@@ -55,15 +57,12 @@ def store_instance(mock_qdrant_client):
 
 
 class TestQdrantEmbeddingStoreConnect:
-
     @patch("search_core.stores.qdrant_embedding_store.QdrantClient")
     @patch(
         "search_core.stores.qdrant_embedding_store.QdrantEmbeddingStore.__init__",
         return_value=None,
     )
-    def test_connect_filters_none_and_unpacks_kwargs(
-        self, mock_init, mock_qdrant_client_cls
-    ):
+    def test_connect_filters_none_and_unpacks_kwargs(self, mock_init, mock_qdrant_client_cls):
         """Verifies that connect filters out None parameters, merges client_kwargs,
 
         and properly invokes the QdrantClient constructor and internal __init__.
@@ -100,7 +99,7 @@ class TestQdrantEmbeddingStoreConnect:
             distance=Distance.DOT,
         )
 
-        assert isinstance(store, QdrantEmbeddingStore)
+        tc.assertIsInstance(store, QdrantEmbeddingStore)
 
     @patch("search_core.stores.qdrant_embedding_store.QdrantClient")
     @patch(
@@ -109,9 +108,7 @@ class TestQdrantEmbeddingStoreConnect:
     )
     def test_connect_handles_minimal_config(self, mock_init, mock_qdrant_client_cls):
         """Verifies connect behavior when only mandatory config properties are provided."""
-        config = QdrantStoreConfig(
-            collection_name="minimal_collection", vector_size=128
-        )
+        config = QdrantStoreConfig(collection_name="minimal_collection", vector_size=128)
 
         # Act
         QdrantEmbeddingStore.connect(config)
@@ -171,14 +168,12 @@ class TestQdrantEmbeddingStoreInit:
             )
 
         # Verify the exception contents explicitly
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.reason_phrase == "Internal Error"
-        assert exc_info.value.headers == {"X-Test-Header": "error"}
-        assert exc_info.value.content == b"Internal Server Error Context"
+        tc.assertEqual(exc_info.value.status_code, 500)
+        tc.assertEqual(exc_info.value.reason_phrase, "Internal Error")
+        tc.assertEqual(exc_info.value.headers, {"X-Test-Header": "error"})
+        tc.assertEqual(exc_info.value.content, b"Internal Server Error Context")
 
-    def test_init_handles_race_condition_cleanly_when_already_exists(
-        self, mock_qdrant_client
-    ):
+    def test_init_handles_race_condition_cleanly_when_already_exists(self, mock_qdrant_client):
         # Simulate the specific cluster race condition error string
         mock_exception = UnexpectedResponse(
             status_code=400,
@@ -196,11 +191,10 @@ class TestQdrantEmbeddingStoreInit:
         )
 
         # Verify it passed line 98 and successfully set up the store instance
-        assert store.collection_name == "test_collection"
+        tc.assertEqual(store.collection_name, "test_collection")
 
 
 class TestCreateMetadataIndexes:
-
     def test_create_metadata_indexes_success(self, store_instance):
         """Verifies that payload index is created for the provided field."""
 
@@ -216,7 +210,6 @@ class TestCreateMetadataIndexes:
 
 
 class TestSaveEmbeddings:
-
     def test_save_embeddings_dense_only_wait_true(self, store_instance):
         """Verifies successful upsert of dense-only documents with wait=True."""
         # Arrange
@@ -238,7 +231,7 @@ class TestSaveEmbeddings:
         result_count = store_instance.save_embeddings(documents, wait=True)
 
         # Assert
-        assert result_count == 1
+        tc.assertEqual(result_count, 1)
         mock_doc.validate.assert_called_once_with(store_instance.vector_size)
 
         # Verify the structure passed to QdrantClient
@@ -284,7 +277,7 @@ class TestSaveEmbeddings:
         result_count = store_instance.save_embeddings(documents, wait=False)
 
         # Assert
-        assert result_count == 1
+        tc.assertEqual(result_count, 1)
         mock_doc.validate.assert_called_once_with(store_instance.vector_size)
 
         # Verify sparse mapping logic transformation
@@ -335,11 +328,10 @@ class TestSaveEmbeddings:
             store_instance.save_embeddings([mock_doc], wait=wait_param)
 
         # Explicitly verify the error format matches the implementation message
-        assert f"Upsert failed with status={returned_status}" in str(exc_info.value)
+        tc.assertIn(f"Upsert failed with status={returned_status}", str(exc_info.value))
 
 
 class TestQdrantStoreSearch:
-
     @pytest.fixture(autouse=True)
     def setup_default_mock_response(self, store_instance):
         """Helper fixture to prevent boilerplate code.
@@ -353,11 +345,7 @@ class TestQdrantStoreSearch:
     def test_search_dense_mode_success(self, store_instance):
         """Verifies correct structural assembly and execution of a dense-only batch query."""
         # Arrange
-        queries = [
-            EmbeddedQuery(
-                id="q-1", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None
-            )
-        ]
+        queries = [EmbeddedQuery(id="q-1", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None)]
         filters = {"category": "finance"}
         config = SearchConfig(mode=SearchMode.DENSE, k=5, return_metadata=["tenant_id"])
 
@@ -377,40 +365,38 @@ class TestQdrantStoreSearch:
         store_instance.client.query_batch_points.return_value = [mock_batch_response]
 
         # Act
-        results = list(
-            store_instance.search(queries=queries, filters=filters, config=config)
-        )
+        results = list(store_instance.search(queries=queries, filters=filters, config=config))
 
         # Assert
-        assert len(results) == 1
+        tc.assertEqual(len(results), 1)
         response = results[0]
-        assert response.id == "q-1"
-        assert len(response.matches) == 1
+        tc.assertEqual(response.id, "q-1")
+        tc.assertEqual(len(response.matches), 1)
 
         match = response.matches[0]
-        assert match.id == "doc-1001"
-        assert match.text == "Dense response text matching query"
-        assert match.score == 0.89
-        assert match.metadata == {"tenant_id": "abc-123"}
+        tc.assertEqual(match.id, "doc-1001")
+        tc.assertEqual(match.text, "Dense response text matching query")
+        tc.assertEqual(match.score, 0.89)
+        tc.assertEqual(match.metadata, {"tenant_id": "abc-123"})
 
         store_instance.client.query_batch_points.assert_called_once()
         _, kwargs = store_instance.client.query_batch_points.call_args
-        assert kwargs["collection_name"] == "test_collection"
+        tc.assertEqual(kwargs["collection_name"], "test_collection")
 
         requests = kwargs["requests"]
-        assert len(requests) == 1
-        assert isinstance(requests[0], QueryRequest)
-        assert requests[0].using == "dense"
-        assert requests[0].limit == 5
-        assert requests[0].with_payload == ["text", "doc_id", "metadata.tenant_id"]
+        tc.assertEqual(len(requests), 1)
+        tc.assertIsInstance(requests[0], QueryRequest)
+        tc.assertEqual(requests[0].using, "dense")
+        tc.assertEqual(requests[0].limit, 5)
+        tc.assertEqual(requests[0].with_payload, ["text", "doc_id", "metadata.tenant_id"])
 
         # Structural Verification of Implicit Match Filter derived through integration
         filter_obj = requests[0].filter
-        assert isinstance(filter_obj, Filter)
-        assert len(filter_obj.must) == 1
-        assert filter_obj.must[0].key == "metadata.category"
-        assert isinstance(filter_obj.must[0].match, MatchValue)
-        assert filter_obj.must[0].match.value == "finance"
+        tc.assertIsInstance(filter_obj, Filter)
+        tc.assertEqual(len(filter_obj.must), 1)
+        tc.assertEqual(filter_obj.must[0].key, "metadata.category")
+        tc.assertIsInstance(filter_obj.must[0].match, MatchValue)
+        tc.assertEqual(filter_obj.must[0].match.value, "finance")
 
     def test_search_hybrid_rrf_mode_success(self, store_instance):
         """Verifies that combined dense and sparse configurations trigger multi-prefetch RRF structures."""
@@ -420,9 +406,7 @@ class TestQdrantStoreSearch:
         mock_sparse.values = [0.4, 0.7]
 
         queries = [
-            EmbeddedQuery(
-                id="q-2", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse
-            )
+            EmbeddedQuery(id="q-2", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse)
         ]
         config = SearchConfig(
             mode=SearchMode.HYBRID, k=3, prefetch_k=20, rrf_k=50, return_metadata=[]
@@ -437,24 +421,22 @@ class TestQdrantStoreSearch:
         requests = kwargs["requests"]
 
         req = requests[0]
-        assert req.prefetch is not None
-        assert len(req.prefetch) == 2
+        tc.assertIsNotNone(req.prefetch)
+        tc.assertEqual(len(req.prefetch), 2)
 
-        assert req.prefetch[0].using == "dense"
-        assert req.prefetch[0].limit == 20
+        tc.assertEqual(req.prefetch[0].using, "dense")
+        tc.assertEqual(req.prefetch[0].limit, 20)
 
-        assert req.prefetch[1].using == "sparse"
-        assert isinstance(req.prefetch[1].query, QdrantSparseVector)
-        assert req.prefetch[1].query.indices == [2, 8]
-        assert req.prefetch[1].query.values == [0.4, 0.7]
+        tc.assertEqual(req.prefetch[1].using, "sparse")
+        tc.assertIsInstance(req.prefetch[1].query, QdrantSparseVector)
+        tc.assertEqual(req.prefetch[1].query.indices, [2, 8])
+        tc.assertEqual(req.prefetch[1].query.values, [0.4, 0.7])
 
-        assert isinstance(req.query, RrfQuery)
-        assert req.query.rrf == Rrf(k=50)
-        assert req.limit == 3
+        tc.assertIsInstance(req.query, RrfQuery)
+        tc.assertEqual(req.query.rrf, Rrf(k=50))
+        tc.assertEqual(req.limit, 3)
 
-    def test_search_mismatched_response_count_raises_runtime_error(
-        self, store_instance
-    ):
+    def test_search_mismatched_response_count_raises_runtime_error(self, store_instance):
         """Ensures that if the internal response array size deviates from the submitted batch size,
 
         a RuntimeError terminates processing instantly.
@@ -473,8 +455,9 @@ class TestQdrantStoreSearch:
         with pytest.raises(RuntimeError) as exc_info:
             list(store_instance.search(queries=queries, filters=None, config=config))
 
-        assert "Qdrant returned a different number of responses than requests" in str(
-            exc_info.value
+        tc.assertIn(
+            "Qdrant returned a different number of responses than requests",
+            str(exc_info.value),
         )
 
     def test_search_with_implicit_in_list_tuple_filters(self, store_instance):
@@ -488,15 +471,15 @@ class TestQdrantStoreSearch:
         _, kwargs = store_instance.client.query_batch_points.call_args
         parsed_filter = kwargs["requests"][0].filter
 
-        assert len(parsed_filter.must) == 2
+        tc.assertEqual(len(parsed_filter.must), 2)
         for condition in parsed_filter.must:
-            assert isinstance(condition, FieldCondition)
-            assert isinstance(condition.match, MatchAny)
+            tc.assertIsInstance(condition, FieldCondition)
+            tc.assertIsInstance(condition.match, MatchAny)
             if condition.key == "metadata.categories":
-                assert condition.match.any == ["finance", "tech"]
+                tc.assertEqual(condition.match.any, ["finance", "tech"])
             else:
-                assert condition.key == "metadata.tags"
-                assert condition.match.any == ["internal", "verified"]
+                tc.assertEqual(condition.key, "metadata.tags")
+                tc.assertEqual(condition.match.any, ["internal", "verified"])
 
     def test_search_with_all_range_operator_filters(self, store_instance):
         """Validates evaluation blocks mapping numeric sub-bounds down into isolated Qdrant Range records."""
@@ -509,14 +492,14 @@ class TestQdrantStoreSearch:
         _, kwargs = store_instance.client.query_batch_points.call_args
         parsed_filter = kwargs["requests"][0].filter
 
-        assert len(parsed_filter.must) == 1
+        tc.assertEqual(len(parsed_filter.must), 1)
         condition = parsed_filter.must[0]
-        assert condition.key == "metadata.created_at"
-        assert isinstance(condition.range, Range)
-        assert condition.range.gt == 100
-        assert condition.range.gte == 101
-        assert condition.range.lt == 200
-        assert condition.range.lte == 201
+        tc.assertEqual(condition.key, "metadata.created_at")
+        tc.assertIsInstance(condition.range, Range)
+        tc.assertEqual(condition.range.gt, 100)
+        tc.assertEqual(condition.range.gte, 101)
+        tc.assertEqual(condition.range.lt, 200)
+        tc.assertEqual(condition.range.lte, 201)
 
     def test_search_with_explicit_equality_operators(self, store_instance):
         """Validates translation logic tracking exact match definitions ($eq, $in)."""
@@ -532,15 +515,15 @@ class TestQdrantStoreSearch:
         _, kwargs = store_instance.client.query_batch_points.call_args
         parsed_filter = kwargs["requests"][0].filter
 
-        assert len(parsed_filter.must) == 2
+        tc.assertEqual(len(parsed_filter.must), 2)
         for condition in parsed_filter.must:
             if condition.key == "metadata.visibility":
-                assert isinstance(condition.match, MatchValue)
-                assert condition.match.value == "public"
+                tc.assertIsInstance(condition.match, MatchValue)
+                tc.assertEqual(condition.match.value, "public")
             else:
-                assert condition.key == "metadata.region"
-                assert isinstance(condition.match, MatchAny)
-                assert condition.match.any == ["us-east", "us-west"]
+                tc.assertEqual(condition.key, "metadata.region")
+                tc.assertIsInstance(condition.match, MatchAny)
+                tc.assertEqual(condition.match.any, ["us-east", "us-west"])
 
     def test_search_with_exclusion_operators(self, store_instance):
         """Validates translation blocks handling inversions ($ne, $nin)."""
@@ -556,18 +539,16 @@ class TestQdrantStoreSearch:
         _, kwargs = store_instance.client.query_batch_points.call_args
         parsed_filter = kwargs["requests"][0].filter
 
-        assert len(parsed_filter.must) == 2
+        tc.assertEqual(len(parsed_filter.must), 2)
         for condition in parsed_filter.must:
-            assert isinstance(condition.match, MatchExcept)
+            tc.assertIsInstance(condition.match, MatchExcept)
             if condition.key == "metadata.status":
-                assert condition.match.except_ == ["archived"]
+                tc.assertEqual(condition.match.except_, ["archived"])
             else:
-                assert condition.key == "metadata.team_id"
-                assert condition.match.except_ == ["team_a", "team_b"]
+                tc.assertEqual(condition.key, "metadata.team_id")
+                tc.assertEqual(condition.match.except_, ["team_a", "team_b"])
 
-    def test_search_with_unknown_operator_clears_branch_fall_through(
-        self, store_instance
-    ):
+    def test_search_with_unknown_operator_clears_branch_fall_through(self, store_instance):
         """Covers branch gap 166->157 via the public interface.
 
         Injecting an unrecognized nested operator payload ensures that execution paths
@@ -583,4 +564,4 @@ class TestQdrantStoreSearch:
         parsed_filter = kwargs["requests"][0].filter
 
         # The unknown key should be skipped entirely, producing an empty list of must requirements
-        assert len(parsed_filter.must) == 0
+        tc.assertEqual(len(parsed_filter.must), 0)

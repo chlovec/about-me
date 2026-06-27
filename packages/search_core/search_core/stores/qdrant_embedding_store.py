@@ -1,34 +1,35 @@
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Iterator, Mapping, Sequence
 
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import (
     Distance,
+    FieldCondition,
+    Filter,
+    MatchAny,
     MatchExcept,
+    MatchValue,
+    PointStruct,
     Prefetch,
     QueryRequest,
     Range,
     Rrf,
     RrfQuery,
-    VectorParams,
-    SparseVectorParams,
-    Filter,
-    MatchAny,
-    MatchValue,
-    FieldCondition,
     ScoredPoint,
-    SparseVector as QdrantSparseVector,
-    PointStruct,
+    SparseVectorParams,
     UpdateStatus,
+    VectorParams,
 )
-from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import (
+    SparseVector as QdrantSparseVector,
+)
 
 from search_core.models import (
-    SearchMode,
     EmbeddedDocument,
     EmbeddedQuery,
     SearchConfig,
+    SearchMode,
     SearchResponse,
     SearchResult,
 )
@@ -133,9 +134,7 @@ class QdrantEmbeddingStore:
 
             # 1. Handle implicit IN clauses
             if isinstance(v, (list, tuple)):
-                must_conditions.append(
-                    FieldCondition(key=key, match=MatchAny(any=list(v)))
-                )
+                must_conditions.append(FieldCondition(key=key, match=MatchAny(any=list(v))))
 
             # 2. Handle explicitly defined operators via nested dictionaries
             elif isinstance(v, dict):
@@ -143,15 +142,11 @@ class QdrantEmbeddingStore:
 
             # 3. Handle implicit exact matches
             else:
-                must_conditions.append(
-                    FieldCondition(key=key, match=MatchValue(value=v))
-                )
+                must_conditions.append(FieldCondition(key=key, match=MatchValue(value=v)))
 
         return Filter(must=must_conditions)
 
-    def _parse_dict_operators(
-        self, key: str, op_dict: dict[str, Any]
-    ) -> list[FieldCondition]:
+    def _parse_dict_operators(self, key: str, op_dict: dict[str, Any]) -> list[FieldCondition]:
         """Helper to parse specific operator dictionaries."""
         conditions = []
         range_kwargs = {}
@@ -163,9 +158,7 @@ class QdrantEmbeddingStore:
             if op in range_ops:
                 range_kwargs[range_ops[op]] = val
             elif op == "$ne":
-                conditions.append(
-                    FieldCondition(key=key, match=MatchExcept(**{"except": [val]}))
-                )
+                conditions.append(FieldCondition(key=key, match=MatchExcept(**{"except": [val]})))
             elif op == "$nin":
                 conditions.append(
                     FieldCondition(key=key, match=MatchExcept(**{"except": list(val)}))
@@ -173,9 +166,7 @@ class QdrantEmbeddingStore:
             elif op == "$eq":
                 conditions.append(FieldCondition(key=key, match=MatchValue(value=val)))
             elif op == "$in":
-                conditions.append(
-                    FieldCondition(key=key, match=MatchAny(any=list(val)))
-                )
+                conditions.append(FieldCondition(key=key, match=MatchAny(any=list(val))))
 
         if range_kwargs:
             conditions.append(FieldCondition(key=key, range=Range(**range_kwargs)))
@@ -321,9 +312,7 @@ class QdrantEmbeddingStore:
 
         # Process response
         if len(responses) != len(queries):
-            raise RuntimeError(
-                "Qdrant returned a different number of responses than requests."
-            )
+            raise RuntimeError("Qdrant returned a different number of responses than requests.")
 
         return iter(
             SearchResponse(

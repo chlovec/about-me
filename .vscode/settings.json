@@ -1,14 +1,21 @@
 {
     "cSpell.words": [
         "addopts",
+        "docstrings",
         "htmlcov",
+        "isort",
         "minversion",
         "numpy",
+        "Pathlib",
+        "pycodestyle",
+        "pyflakes",
         "pytest",
         "pythonpath",
+        "pyupgrade",
         "Qdrant",
         "qfilter",
         "testpaths",
-        "venv"
+        "venv",
+        "virattt"
     ]
 }

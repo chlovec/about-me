@@ -1,0 +1,16 @@
+target-version = "py312"
+line-length = 100 # Gives your descriptive docstrings breathing room
+
+[lint]
+select = [
+    "E",   # Pycodestyle errors
+    "W",   # Pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # Isort Grouping
+    "PTH", # Enforce modern Pathlib usage
+    "ISC", # Catches missing commas in __all__ lists
+]
+ignore = [
+    "TRY003", # Allows custom descriptive inline error messages
+    "E501",   # Let ruff format manage layouts; do not fail linting over comment/docstring lengths
+]

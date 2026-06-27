@@ -1,11 +1,12 @@
 from typing import Any, AsyncIterator, Iterator, Mapping, Protocol, Sequence
+
 import numpy as np
 from numpy.typing import NDArray
 
 from search_core.models import (
     EmbeddedDocument,
-    SearchConfig,
     EmbeddedQuery,
+    SearchConfig,
     SearchResponse,
     SparseVector,
 )
@@ -97,9 +98,7 @@ class AsyncVectorStore(Protocol):
         """Creates keyword payload indexes for accelerated field filtering asynchronously."""
         ...
 
-    async def save_embeddings(
-        self, documents: list[EmbeddedDocument], wait: bool
-    ) -> int:
+    async def save_embeddings(self, documents: list[EmbeddedDocument], wait: bool) -> int:
         """Translates Document data into points and pushes them to the backend API asynchronously."""
         ...
 

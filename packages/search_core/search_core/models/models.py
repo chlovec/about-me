@@ -1,7 +1,7 @@
+import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
-import uuid
 
 import numpy as np
 from numpy.typing import NDArray
@@ -31,8 +31,7 @@ class SparseVector:
         """Automatically validates the vector upon instantiation."""
         if len(self.indices) != len(self.values):
             raise ValueError(
-                f"Sparse vector mismatch: {len(self.indices)} indices "
-                f"vs {len(self.values)} values."
+                f"Sparse vector mismatch: {len(self.indices)} indices vs {len(self.values)} values."
             )
 
 

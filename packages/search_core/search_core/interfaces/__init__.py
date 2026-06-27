@@ -1,9 +1,9 @@
 from .interfaces import (
+    AsyncVectorStore,
     DenseEncoder,
     SparseEncoder,
     VectorItem,
     VectorStore,
-    AsyncVectorStore,
 )
 
 __all__ = [

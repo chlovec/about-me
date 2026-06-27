@@ -11,8 +11,9 @@ from .models import (
 )
 
 __all__ = [
-    "Document"
+    "Document",
     "EmbeddedDocument",
+    "DocumentEmbeddedDocument",
     "EmbeddedQuery",
     "SearchConfig",
     "SearchMode",
