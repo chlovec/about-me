@@ -95,7 +95,6 @@ class EmbeddedQuery:
     sparse_vector: SparseVector | None = None
 
 
-@dataclass(frozen=True)
 class EmbeddedDocument:
     """Document enriched with vector representations."""
 
@@ -105,33 +104,70 @@ class EmbeddedDocument:
     sparse_vector: SparseVector | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_document(
+        cls,
+        document: Document,
+        *,
+        embedding: Vector | None = None,
+        sparse_vector: SparseVector | None = None,
+    ) -> "EmbeddedDocument":
+        """Creates an embedded document from a document.
+
+        Args:
+            document: The source document.
+            embedding: Optional dense embedding.
+            sparse_vector: Optional sparse embedding.
+
+        Returns:
+            An EmbeddedDocument initialized from the document.
+        """
+        return cls(
+            id=document.id,
+            text=document.text,
+            embedding=embedding,
+            sparse_vector=sparse_vector,
+            metadata=document.metadata,
+        )
+
     def validate(self, vector_size: int) -> None:
-        # 1. Safely check for None without triggering Numpy array evaluation
+        # Safely check for None without triggering Numpy array evaluation
         if self.embedding is None:
             raise ValueError(f"Missing embedding for document ID: {self.id}")
 
-        # 2. Validate dimensional boundaries
+        # Validate dimensional boundaries
         if len(self.embedding) != vector_size:
             raise ValueError(
                 f"Embedding size mismatch for document {self.id}: "
                 f"Expected {vector_size} dimensions, got {len(self.embedding)}."
             )
 
-        # 3. Validate id format (Qdrant allows unsigned int or UUID)
-        is_valid_uuid = False
+        # Validate id type
+        if not isinstance(self.id, str):
+            raise ValueError(
+                f"Invalid document ID type: {type(self.id).__name__}. "
+                "Qdrant requires document IDs to be either an unsigned integer or "
+                "a valid UUID string."
+            )
+
+        # (Qdrant allows unsigned int or UUID)
+        # Validate unsigned int id format
+        if isinstance(self.id, int):
+            if self.id < 0:
+                raise ValueError(
+                    f"Invalid document ID: '{self.id}'. Qdrant requires document IDs to be "
+                    "either an unsigned integer or a valid UUID string."
+                )
+            return
+
+        # 4. Validate id format (Qdrant allows unsigned int or UUID)
         try:
             uuid.UUID(self.id)
-            is_valid_uuid = True
-        except ValueError:
-            pass  # It's not a UUID, we'll check if it's an integer string next
-
-        is_valid_uint = self.id.isdigit()
-
-        if not (is_valid_uuid or is_valid_uint):
+        except ValueError as exc:
             raise ValueError(
                 f"Invalid document ID: '{self.id}'. Qdrant requires document IDs to be "
                 "either an unsigned integer or a valid UUID string."
-            ) from None
+            ) from exc
 
 
 # -------------------------

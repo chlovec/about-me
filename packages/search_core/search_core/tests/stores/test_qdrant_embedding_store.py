@@ -199,7 +199,7 @@ class TestCreateMetadataIndexes:
         """Verifies that payload index is created for the provided field."""
 
         # Act
-        store_instance.create_metadata_indexes("user_name")
+        store_instance.create_metadata_index("user_name")
 
         # Assert the expected payload index call occurred
         store_instance.client.create_payload_index.assert_called_once_with(
@@ -345,7 +345,11 @@ class TestQdrantStoreSearch:
     def test_search_dense_mode_success(self, store_instance):
         """Verifies correct structural assembly and execution of a dense-only batch query."""
         # Arrange
-        queries = [EmbeddedQuery(id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None)]
+        queries = [
+            EmbeddedQuery(
+                id="q-1", text="text-query", embedding=np.array([0.1, 0.2, 0.3]), sparse_vector=None
+            )
+        ]
         filters = {"category": "finance"}
         config = SearchConfig(mode=SearchMode.DENSE, k=5, return_metadata=["tenant_id"])
 
@@ -406,7 +410,12 @@ class TestQdrantStoreSearch:
         mock_sparse.values = [0.4, 0.7]
 
         queries = [
-            EmbeddedQuery(id="q-2", text="text-query", embedding=np.array([0.5, 0.5, 0.5]), sparse_vector=mock_sparse)
+            EmbeddedQuery(
+                id="q-2",
+                text="text-query",
+                embedding=np.array([0.5, 0.5, 0.5]),
+                sparse_vector=mock_sparse,
+            )
         ]
         config = SearchConfig(
             mode=SearchMode.HYBRID, k=3, prefetch_k=20, rrf_k=50, return_metadata=[]

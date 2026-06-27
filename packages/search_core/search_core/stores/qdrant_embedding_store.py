@@ -234,7 +234,7 @@ class QdrantEmbeddingStore:
     # Indexing
     # ===========================
 
-    def create_metadata_indexes(self, field_name: str) -> None:
+    def create_metadata_index(self, field_name: str) -> None:
         self.client.create_payload_index(
             collection_name=self.collection_name,
             field_name=f"metadata.{field_name}",

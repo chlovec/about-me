@@ -43,7 +43,6 @@ class SparseEncoder(Protocol):
 class VectorItem(Protocol):
     """Structural interface definition for all processing items."""
 
-    id: str
     text: str
     embedding: NDArray[np.float32] | None
     sparse_vector: SparseVector | None
@@ -52,7 +51,7 @@ class VectorItem(Protocol):
 class VectorStore(Protocol):
     """Structural contract defining the requirements for a vector database driver."""
 
-    def create_metadata_indexes(self, fields: list[str]) -> None:
+    def create_metadata_index(self, field_name: str) -> None:
         """Creates keyword payload indexes for accelerated field filtering.
 
         Args:
