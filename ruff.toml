@@ -9,8 +9,15 @@ select = [
     "I",   # Isort Grouping
     "PTH", # Enforce modern Pathlib usage
     "ISC", # Catches missing commas in __all__ lists
+    "S",   # Security rules (includes S101 assert detection)
 ]
+
 ignore = [
     "TRY003", # Allows custom descriptive inline error messages
-    "E501",   # Let ruff format manage layouts; do not fail linting over comment/docstring lengths
+    "E501",   # Let ruff format manage layouts
 ]
+
+[lint.per-file-ignores]
+"**/tests/**/*.py" = ["S101"]
+"**/*test*.py" = ["S101"]
+"tests/**/*.py" = ["S101"]

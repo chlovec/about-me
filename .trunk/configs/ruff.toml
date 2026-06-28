@@ -1,0 +1,7 @@
+# Generic, formatter-friendly config.
+[lint]
+select = ["B", "D3", "E", "F"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"**/tests/**/*.py" = ["S101"]

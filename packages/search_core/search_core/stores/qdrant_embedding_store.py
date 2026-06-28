@@ -121,57 +121,73 @@ class QdrantEmbeddingStore:
     # Helpers
     # ===========================
 
-    from typing import Any
-
-    def _parse_filters(self, filters: dict[str, Any] | None) -> Filter | None:
+    def _parse_filters(self, filters: Mapping[str, Any] | None) -> Filter | None:
         """Parses a dictionary into Qdrant match, exclusion, and range filters."""
         if not filters:
             return None
 
         must_conditions = []
+        range_ops = {
+            "$gt": "gt",
+            "$gte": "gte",
+            "$lt": "lt",
+            "$lte": "lte",
+        }
+
         for k, v in filters.items():
             key = f"metadata.{k}"
 
-            # 1. Handle implicit IN clauses
+            # 1. Handle implicit IN clauses (backward compatibility)
             if isinstance(v, (list, tuple)):
                 must_conditions.append(FieldCondition(key=key, match=MatchAny(any=list(v))))
+                continue
 
             # 2. Handle explicitly defined operators via nested dictionaries
-            elif isinstance(v, dict):
-                must_conditions.extend(self._parse_dict_operators(key, v))
+            if isinstance(v, dict):
+                has_operators = any(str(op).startswith("$") for op in v)
 
-            # 3. Handle implicit exact matches
-            else:
-                must_conditions.append(FieldCondition(key=key, match=MatchValue(value=v)))
+                if not has_operators:
+                    # Enforce dot-notation warning for raw literal dict matches
+                    raise ValueError(
+                        f"Direct dictionary filtering on nested object '{k}' is unsupported. "
+                        f"Use dot-notation paths (e.g., '{k}.field') instead."
+                    )
+
+                range_kwargs = {}
+
+                for op, val in v.items():
+                    # Range operators
+                    if op in range_ops:
+                        range_kwargs[range_ops[op]] = val
+
+                    # Exclusion operators (Fixed syntax for Qdrant)
+                    elif op == "$ne":
+                        must_conditions.append(
+                            FieldCondition(key=key, match=MatchExcept(**{"except": [val]}))
+                        )
+                    elif op == "$nin":
+                        must_conditions.append(
+                            FieldCondition(key=key, match=MatchExcept(**{"except": list(val)}))
+                        )
+
+                    # Explicit equality/inclusion
+                    elif op == "$eq":
+                        must_conditions.append(FieldCondition(key=key, match=MatchValue(value=val)))
+                    elif op == "$in":
+                        must_conditions.append(
+                            FieldCondition(key=key, match=MatchAny(any=list(val)))
+                        )
+                    else:
+                        continue  # Safely clear/ignore unknown operators
+
+                if range_kwargs:
+                    must_conditions.append(FieldCondition(key=key, range=Range(**range_kwargs)))
+                continue
+
+            # 3. Handle implicit exact matches (backward compatibility)
+            must_conditions.append(FieldCondition(key=key, match=MatchValue(value=v)))
 
         return Filter(must=must_conditions)
-
-    def _parse_dict_operators(self, key: str, op_dict: dict[str, Any]) -> list[FieldCondition]:
-        """Helper to parse specific operator dictionaries."""
-        conditions = []
-        range_kwargs = {}
-
-        # Map simple operators to their respective match/range generators
-        range_ops = {"$gt": "gt", "$gte": "gte", "$lt": "lt", "$lte": "lte"}
-
-        for op, val in op_dict.items():
-            if op in range_ops:
-                range_kwargs[range_ops[op]] = val
-            elif op == "$ne":
-                conditions.append(FieldCondition(key=key, match=MatchExcept(**{"except": [val]})))
-            elif op == "$nin":
-                conditions.append(
-                    FieldCondition(key=key, match=MatchExcept(**{"except": list(val)}))
-                )
-            elif op == "$eq":
-                conditions.append(FieldCondition(key=key, match=MatchValue(value=val)))
-            elif op == "$in":
-                conditions.append(FieldCondition(key=key, match=MatchAny(any=list(val))))
-
-        if range_kwargs:
-            conditions.append(FieldCondition(key=key, range=Range(**range_kwargs)))
-
-        return conditions
 
     def _build_search_request(
         self,
@@ -245,7 +261,7 @@ class QdrantEmbeddingStore:
     # Data Ingestion
     # ===========================
 
-    def save_embeddings(self, documents: list[EmbeddedDocument], wait: bool) -> int:
+    def save_embeddings(self, documents: Sequence[EmbeddedDocument], wait: bool) -> int:
         points = []
         for doc in documents:
             doc.validate(self.vector_size)

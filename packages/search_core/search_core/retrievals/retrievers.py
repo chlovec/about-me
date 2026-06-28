@@ -23,7 +23,7 @@ class EmbeddingResult(NamedTuple):
     sparse: SparseVector | None
 
 
-class SearchOrchestrator:
+class Retriever:
     def __init__(
         self,
         dense_model: DenseEncoder,
