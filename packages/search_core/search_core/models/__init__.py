@@ -8,6 +8,7 @@ from .models import (
     SearchResponse,
     SearchResult,
     SparseVector,
+    Vector,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "SparseVector",
+    "Vector",
 ]

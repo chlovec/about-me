@@ -47,6 +47,16 @@ class SearchQuery:
     id: str
     text: str
 
+    def to_embedded(
+        self, embedding: Vector, sparse_vector: SparseVector | None = None
+    ) -> "EmbeddedQuery":
+        return EmbeddedQuery(
+            id=self.id,
+            text=self.text,
+            embedding=embedding,
+            sparse_vector=sparse_vector,
+        )
+
 
 @dataclass(frozen=True)
 class Document:
@@ -55,6 +65,18 @@ class Document:
     id: str
     text: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_embedded(
+        self, embedding: Vector, sparse_vector: SparseVector | None = None
+    ) -> "EmbeddedDocument":
+        """Converts the base document into an EmbeddedDocument with spatial vectors."""
+        return EmbeddedDocument(
+            id=self.id,
+            text=self.text,
+            metadata=self.metadata,
+            embedding=embedding,
+            sparse_vector=sparse_vector,
+        )
 
 
 # -------------------------
@@ -95,6 +117,7 @@ class EmbeddedQuery:
     sparse_vector: SparseVector | None = None
 
 
+@dataclass(frozen=True)
 class EmbeddedDocument:
     """Document enriched with vector representations."""
 
@@ -103,32 +126,6 @@ class EmbeddedDocument:
     embedding: Vector | None
     sparse_vector: SparseVector | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_document(
-        cls,
-        document: Document,
-        *,
-        embedding: Vector | None = None,
-        sparse_vector: SparseVector | None = None,
-    ) -> "EmbeddedDocument":
-        """Creates an embedded document from a document.
-
-        Args:
-            document: The source document.
-            embedding: Optional dense embedding.
-            sparse_vector: Optional sparse embedding.
-
-        Returns:
-            An EmbeddedDocument initialized from the document.
-        """
-        return cls(
-            id=document.id,
-            text=document.text,
-            embedding=embedding,
-            sparse_vector=sparse_vector,
-            metadata=document.metadata,
-        )
 
     def validate(self, vector_size: int) -> None:
         # Safely check for None without triggering Numpy array evaluation

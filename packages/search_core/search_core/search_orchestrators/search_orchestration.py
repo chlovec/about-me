@@ -1,13 +1,26 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator, Sequence
+from itertools import repeat
+from typing import Any, Iterator, Mapping, NamedTuple
 
 from search_core.interfaces import (
     DenseEncoder,
     SparseEncoder,
-    VectorItem,
     VectorStore,
 )
-from search_core.models import Document, EmbeddedDocument
+from search_core.models import (
+    Document,
+    SearchConfig,
+    SearchMode,
+    SearchQuery,
+    SearchResponse,
+    SparseVector,
+    Vector,
+)
+
+
+class EmbeddingResult(NamedTuple):
+    dense: Vector | None
+    sparse: SparseVector | None
 
 
 class SearchOrchestrator:
@@ -30,31 +43,28 @@ class SearchOrchestrator:
 
     def _create_embeddings(
         self,
-        items: Sequence[VectorItem],
+        texts: list[str],
         dense: bool = True,
         sparse: bool = True,
         show_progress: bool = False,
-    ):
-        if not items:
-            return
+    ) -> EmbeddingResult:
+        if not texts:
+            return EmbeddingResult(dense=None, sparse=None)
 
-        texts = [item.text for item in items]
+        dense_embeddings, sparse_vectors = None, None
 
         if dense:
-            embeddings = self.dense_model.encode(
+            dense_embeddings = self.dense_model.encode(
                 texts,
                 show_progress_bar=show_progress,
                 convert_to_numpy=True,
                 normalize_embeddings=True,
             ).astype("float32")
 
-            for item, embedding in zip(items, embeddings):
-                item.embedding = embedding
-
         if sparse:
             sparse_vectors = self.sparse_model.encode(texts)
-            for item, sp_vector in zip(items, sparse_vectors):
-                item.sparse_vector = sp_vector
+
+        return EmbeddingResult(dense=dense_embeddings, sparse=sparse_vectors)
 
     def create_metadata_indexes(self, fields: list[str]) -> None:
         """Proxies index construction commands down to the datastore integration layer.
@@ -68,9 +78,10 @@ class SearchOrchestrator:
         # Deduplicate fields to prevent redundant thread executions
         unique_fields = list(set(fields))
 
-        # Cap concurrency at a maximum of 16 workers
-        max_workers = min(len(unique_fields), 16)
+        # Cap concurrency at a maximum of 8 workers
+        max_workers = min(len(unique_fields), 8)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Materialize list to ensure execution completes before exiting context
             list(executor.map(self.embedding_store.create_metadata_index, unique_fields))
 
     def create_and_save_embeddings(
@@ -102,12 +113,57 @@ class SearchOrchestrator:
 
         for i in range(0, total_docs, batch_size):
             docs = documents[i : i + batch_size]
-            embedded_docs = [EmbeddedDocument.from_document(doc) for doc in docs]
-            self._create_embeddings(
-                items=embedded_docs,
+            texts = [doc.text for doc in docs]
+            embeddings = self._create_embeddings(
+                texts=texts,
                 dense=True,
                 sparse=create_sparse_embeddings,
                 show_progress=show_progress,
             )
+
+            # If an embedding array is None, create an infinite iterator of None values
+            # so zip() can gracefully unpack it for every document in the batch.
+            dense_iter = embeddings.dense if embeddings.dense is not None else repeat(None)
+            sparse_iter = embeddings.sparse if embeddings.sparse is not None else repeat(None)
+
+            embedded_docs = [
+                doc.to_embedded(embedding, sp_vector)
+                for doc, embedding, sp_vector in zip(docs, dense_iter, sparse_iter)
+            ]
+
             total_saved += self.embedding_store.save_embeddings(documents=embedded_docs, wait=wait)
             yield total_saved
+
+    def retrieve_documents(
+        self,
+        queries: list[SearchQuery],
+        filters: Mapping[str, Any] | None,
+        config: SearchConfig,
+        batch_size: int = 32,
+    ) -> Iterator[SearchResponse]:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be > 0")
+
+        total_queries = len(queries)
+
+        for i in range(0, total_queries, batch_size):
+            batched_queries = queries[i : i + batch_size]
+            texts = [query.text for query in batched_queries]
+            embeddings = self._create_embeddings(
+                texts=texts,
+                dense=True,
+                sparse=config.mode == SearchMode.HYBRID,
+                show_progress=False,
+            )
+
+            # If an embedding array is None, create an infinite iterator of None values
+            # so zip() can gracefully unpack it for every document in the batch.
+            dense_iter = embeddings.dense if embeddings.dense is not None else repeat(None)
+            sparse_iter = embeddings.sparse if embeddings.sparse is not None else repeat(None)
+
+            embedded_queries = [
+                query.to_embedded(embedding, sp_vector)
+                for query, embedding, sp_vector in zip(batched_queries, dense_iter, sparse_iter)
+            ]
+
+            yield self.embedding_store.search(embedded_queries, filters, config)

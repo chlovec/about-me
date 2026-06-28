@@ -46,6 +46,7 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "SparseVector",
+    "Vector",
     # Interfaces
     "DenseEncoder",
     "SparseEncoder",
