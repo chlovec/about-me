@@ -48,9 +48,6 @@ class Retriever:
         sparse: bool = True,
         show_progress: bool = False,
     ) -> EmbeddingResult:
-        if not texts:
-            return EmbeddingResult(dense=None, sparse=None)
-
         dense_embeddings, sparse_vectors = None, None
 
         if dense:
@@ -107,6 +104,9 @@ class Retriever:
         """
         if batch_size <= 0:
             raise ValueError("batch_size must be > 0")
+
+        if not documents:
+            raise ValueError("documents cannot be empty")
 
         total_saved = 0
         total_docs = len(documents)
