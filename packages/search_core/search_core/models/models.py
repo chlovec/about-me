@@ -99,6 +99,7 @@ class SearchResponse:
     """Final response for a search query execution."""
 
     id: str
+    query: str
     matches: list[SearchResult]
 
 

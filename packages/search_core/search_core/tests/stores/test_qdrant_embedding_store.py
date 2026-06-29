@@ -375,6 +375,7 @@ class TestQdrantEmbeddingStoreSearch:
         expected_responses = [
             SearchResponse(
                 id="query_id_1",
+                query="machine learning",
                 matches=[
                     SearchResult(
                         id="doc-abc", score=0.89, text="Result text", metadata={"status": "active"}
@@ -483,6 +484,7 @@ class TestQdrantEmbeddingStoreSearch:
         expected_responses = [
             SearchResponse(
                 id="query_id_1",
+                query="machine learning",
                 matches=[SearchResult(id="doc-1", score=0.99, text="edge case", metadata={})],
             )
         ]
@@ -549,10 +551,14 @@ class TestQdrantEmbeddingStoreSearch:
 
         expected_responses = [
             SearchResponse(
-                id="batch_q1", matches=[SearchResult(id="doc-1", score=0.9, text="t1", metadata={})]
+                id="batch_q1",
+                query="first",
+                matches=[SearchResult(id="doc-1", score=0.9, text="t1", metadata={})],
             ),
             SearchResponse(
-                id="batch_q2", matches=[SearchResult(id="doc-2", score=0.8, text="t2", metadata={})]
+                id="batch_q2",
+                query="second",
+                matches=[SearchResult(id="doc-2", score=0.8, text="t2", metadata={})],
             ),
         ]
         assert results == expected_responses
@@ -592,7 +598,7 @@ class TestQdrantEmbeddingStoreSearch:
             collection_name=collection_name, requests=[expected_request]
         )
 
-        assert results == [SearchResponse(id="hybrid_1", matches=[])]
+        assert results == [SearchResponse(id="hybrid_1", query="hybrid match", matches=[])]
 
     def test_search_hybrid_fallback_behavior_when_sparse_missing(
         self, mock_client, store, sample_queries, collection_name, default_payload
@@ -617,7 +623,7 @@ class TestQdrantEmbeddingStoreSearch:
             collection_name=collection_name, requests=[expected_request]
         )
 
-        assert results == [SearchResponse(id="query_id_1", matches=[])]
+        assert results == [SearchResponse(id="query_id_1", query="machine learning", matches=[])]
 
     def test_search_payload_missing_fallbacks(self, mock_client, store, sample_queries):
         mock_api_response = MagicMock()
@@ -629,7 +635,9 @@ class TestQdrantEmbeddingStoreSearch:
 
         expected_responses = [
             SearchResponse(
-                id="query_id_1", matches=[SearchResult(id=999, score=0.71, text="", metadata={})]
+                id="query_id_1",
+                query="machine learning",
+                matches=[SearchResult(id=999, score=0.71, text="", metadata={})],
             )
         ]
         assert results == expected_responses

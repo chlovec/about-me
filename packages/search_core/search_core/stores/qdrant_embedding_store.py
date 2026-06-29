@@ -333,6 +333,7 @@ class QdrantEmbeddingStore:
         return iter(
             SearchResponse(
                 id=query.id,
+                query=query.text,
                 matches=[self._build_search_result(point) for point in response.points],
             )
             for response, query in zip(responses, queries, strict=True)
