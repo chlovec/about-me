@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
-
 from search_core.interfaces import DenseEncoder, SparseEncoder, VectorStore
 from search_core.models import (
     Document,

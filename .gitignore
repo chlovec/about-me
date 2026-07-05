@@ -26,3 +26,6 @@ bin/
 **/.coverage
 **/htmlcov/
 **/coverage.xml
+
+# readme
+readme.dev.md

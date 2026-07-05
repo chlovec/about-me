@@ -20,7 +20,6 @@ from qdrant_client.models import (
     UpdateStatus,
     VectorParams,
 )
-
 from search_core.models import (
     EmbeddedDocument,
     EmbeddedQuery,
