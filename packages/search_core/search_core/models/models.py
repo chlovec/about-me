@@ -91,6 +91,7 @@ class SearchResult:
     id: str
     text: str
     score: float
+    rerank_score: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 

@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "addopts",
+        "defaultdicts",
         "docstrings",
         "freqs",
         "htmlcov",
@@ -24,6 +25,7 @@
         "rerank",
         "reranked",
         "Reranker",
+        "rerankers",
         "seaborn",
         "testpaths",
         "venv",

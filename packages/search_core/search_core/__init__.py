@@ -32,6 +32,7 @@ from search_core.models import (
     SearchResult,
     SparseVector,
 )
+from search_core.rerankers import Reranker
 from search_core.retrievals import EmbeddingResult, Retriever
 from search_core.stores import QdrantEmbeddingStore, QdrantStoreConfig
 
@@ -60,4 +61,6 @@ __all__ = [
     # Retrievals
     "EmbeddingResult",
     "Retriever",
+    # Reranker
+    "Reranker",
 ]
