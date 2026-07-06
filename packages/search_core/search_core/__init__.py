@@ -15,7 +15,6 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
 from search_core.interfaces import (
-    AsyncVectorStore,
     DenseEncoder,
     SparseEncoder,
     VectorItem,
@@ -33,7 +32,7 @@ from search_core.models import (
     SparseVector,
 )
 from search_core.rerankers import Reranker
-from search_core.retrievals import EmbeddingResult, Retriever
+from search_core.retrievals import EmbeddingResult, Retriever, UnifiedSparseAdapter
 from search_core.stores import QdrantEmbeddingStore, QdrantStoreConfig
 
 __all__ = [
@@ -54,13 +53,13 @@ __all__ = [
     "SparseEncoder",
     "VectorItem",
     "VectorStore",
-    "AsyncVectorStore",
     # Stores
     "QdrantEmbeddingStore",
     "QdrantStoreConfig",
     # Retrievals
     "EmbeddingResult",
     "Retriever",
+    "UnifiedSparseAdapter",
     # Reranker
     "Reranker",
 ]

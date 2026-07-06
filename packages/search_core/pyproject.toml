@@ -5,13 +5,19 @@ description = "Core search library"
 requires-python = ">=3.12"
 
 dependencies = [
+    "fastembed>=0.8.0",
     "numpy>=2.5.0",
     "qdrant-client>=1.18.0",
+    "sentence-transformers>=5.6.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# 📐 Tell Hatchling exactly where your code lives
+[tool.hatch.build.targets.wheel]
+packages = ["search_core"]
 
 [tool.pytest.ini_options]
 pythonpath = ["search_core"]

@@ -1,8 +1,10 @@
 {
     "cSpell.words": [
         "addopts",
+        "chlovec",
         "defaultdicts",
         "docstrings",
+        "fastembed",
         "freqs",
         "htmlcov",
         "ipykernel",
@@ -27,6 +29,7 @@
         "Reranker",
         "rerankers",
         "seaborn",
+        "setuptools",
         "testpaths",
         "venv",
         "virattt"

@@ -1,5 +1,4 @@
 from .interfaces import (
-    AsyncVectorStore,
     DenseEncoder,
     SparseEncoder,
     VectorItem,
@@ -11,5 +10,4 @@ __all__ = [
     "SparseEncoder",
     "VectorItem",
     "VectorStore",
-    "AsyncVectorStore",
 ]

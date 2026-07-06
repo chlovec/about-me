@@ -1,6 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
-from typing import Any, Iterator, Mapping, NamedTuple
+from typing import Any, Iterator, Mapping, NamedTuple, Sequence
+
+import numpy as np
+from fastembed import SparseTextEmbedding
+from sentence_transformers import SentenceTransformer
 
 from search_core.interfaces import (
     DenseEncoder,
@@ -21,6 +25,62 @@ from search_core.models import (
 class EmbeddingResult(NamedTuple):
     dense: Vector | None
     sparse: SparseVector | None
+
+
+class UnifiedSparseAdapter:
+    """Adapts various underlying models to conform to the SparseEncoder Protocol."""
+
+    def __init__(self, shared_model: Any):
+        self.model = shared_model
+
+    @classmethod
+    def from_sparse_text_embedding(cls, model_name: str, **kwargs) -> "UnifiedSparseAdapter":
+        """Factory method to build the adapter directly from a SparseTextEmbedding model."""
+        model_instance = SparseTextEmbedding(model_name=model_name, **kwargs)
+        return cls(shared_model=model_instance)
+
+    @classmethod
+    def from_sentence_transformer(cls, model_name: str, **kwargs) -> "UnifiedSparseAdapter":
+        """Factory method to build the adapter directly from a SentenceTransformer model."""
+        model_instance = SentenceTransformer(model_name, **kwargs)
+        return cls(shared_model=model_instance)
+
+    def encode(self, texts: Sequence[str]) -> list[SparseVector]:
+        # Case A: Unified/hybrid models that accept specific return flags
+        if (
+            hasattr(self.model, "encode")
+            and "return_sparse" in self.model.encode.__code__.co_varnames
+        ):
+            outputs = self.model.encode(texts, return_dense=False, return_sparse=True)
+            return list(outputs["lexical_weights"])
+
+        # Case B: Standard FastEmbed sparse models (uses .embed)
+        elif hasattr(self.model, "embed"):
+            return list(self.model.embed(texts))
+
+        # Case C: SentenceTransformer variants
+        elif hasattr(self.model, "encode"):
+            # Sub-case C1: Check if the model has a dedicated sparse encoding method
+            if hasattr(self.model, "encode_sparse"):
+                return list(self.model.encode_sparse(texts))
+
+            # Sub-case C2: Fallback check to ensure we aren't getting back dense numpy arrays
+            result = self.model.encode(texts)
+
+            # If the result is a standard dense matrix (NumPy array), it's invalid for this adapter
+            if isinstance(result, np.ndarray) and result.ndim == 2:
+                raise TypeError(
+                    f"The model '{type(self.model).__name__}' returned a dense matrix. "
+                    "A standard SentenceTransformer cannot be used in a SparseAdapter "
+                    "unless it is a dedicated sparse/hybrid architecture."
+                )
+
+            return list(result)
+
+        else:
+            raise AttributeError(
+                f"The wrapped model {type(self.model).__name__} does not have a valid embed or encode method."
+            )
 
 
 class Retriever:

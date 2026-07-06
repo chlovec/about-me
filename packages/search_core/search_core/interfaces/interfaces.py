@@ -1,4 +1,4 @@
-from typing import Any, AsyncIterator, Iterator, Mapping, Protocol, Sequence
+from typing import Any, Iterator, Mapping, Protocol, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -59,7 +59,7 @@ class VectorStore(Protocol):
         """
         ...
 
-    def save_embeddings(self, documents: list[EmbeddedDocument], wait: bool) -> int:
+    def save_embeddings(self, documents: Sequence[EmbeddedDocument], wait: bool) -> int:
         """Translates Document data into points and pushes them to the backend API.
 
         Args:
@@ -86,30 +86,5 @@ class VectorStore(Protocol):
 
         Returns:
             An iterator wrapping symmetric query result blocks.
-        """
-        ...
-
-
-class AsyncVectorStore(Protocol):
-    """Asynchronous structural contract defining the requirements for a vector database driver."""
-
-    async def create_metadata_indexes(self, field_name: str) -> None:
-        """Creates keyword payload indexes for accelerated field filtering asynchronously."""
-        ...
-
-    async def save_embeddings(self, documents: list[EmbeddedDocument], wait: bool) -> int:
-        """Translates Document data into points and pushes them to the backend API asynchronously."""
-        ...
-
-    async def search(
-        self,
-        queries: Sequence[EmbeddedQuery],
-        filters: Mapping[str, Any] | None,
-        config: SearchConfig,
-    ) -> AsyncIterator[SearchResponse]:
-        """Handles asynchronous query routing and request orchestration against the backend.
-
-        Returns:
-            An AsyncIterator wrapping symmetric query result blocks. Use `async for` to consume.
         """
         ...
