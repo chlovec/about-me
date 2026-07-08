@@ -120,3 +120,53 @@ def test_rerank_multiple_batches_full_coverage(mock_model):
         call([("Q3", "T3")], batch_size=2, show_progress_bar=True, convert_to_numpy=True),
     ]
     mock_model.predict.assert_has_calls(expected_calls, any_order=False)
+
+
+def test_rerank_raises_value_error_when_no_model_provided():
+    """
+    Ensures a ValueError is raised if neither the class instance
+    nor the method call is provided with a model.
+    """
+    # 1. Initialize without a model
+    reranker = Reranker(model=None)
+
+    # Mock data structure to get past the initial setup
+    mock_doc = MagicMock(spec=SearchResponse)
+    mock_doc.query = "test query"
+    mock_doc.matches = [MagicMock()]
+
+    # 3. Assert ValueError is raised when calling rerank without passing a model
+    generator = reranker.rerank(retrieved_docs=[mock_doc], model=None)
+
+    with pytest.raises(ValueError, match="A reranking model must be provided."):
+        # We must trigger the generator execution using next()
+        next(generator)
+
+
+def test_rerank_raises_runtime_error_on_mismatched_scores_count():
+    """
+    Ensures a RuntimeError is raised if the model's prediction output length
+    does not match the total number of query-document pairs.
+    """
+    # 1. Set up a mock model that returns an incorrect number of scores
+    mock_model = MagicMock()
+    # We will simulate 2 total query-document pairs, but the model returns only 1 score
+    mock_model.predict.return_value = [0.95]
+
+    reranker = Reranker()
+
+    # 2. Create dummy search responses with a total of 2 matches
+    mock_match1 = MagicMock()
+    mock_match2 = MagicMock()
+
+    doc_container = MagicMock(spec=SearchResponse)
+    doc_container.query = "AI assistant"
+    doc_container.matches = [mock_match1, mock_match2]  # 2 pairs total
+
+    retrieved_docs = [doc_container]
+
+    # 3. Assert RuntimeError is raised due to the length mismatch (1 score vs 2 pairs)
+    generator = reranker.rerank(retrieved_docs=retrieved_docs, model=mock_model)
+
+    with pytest.raises(RuntimeError, match="Model returned an unexpected number of scores."):
+        next(generator)

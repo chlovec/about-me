@@ -1,11 +1,11 @@
 from dataclasses import replace
-from typing import Sequence
+from typing import Iterator, Sequence
 
 from search_core.models.models import SearchResponse
 
 
 class Reranker:
-    def __init__(self, model):
+    def __init__(self, model=None):
         self.model = model
 
     def rerank(
@@ -13,18 +13,26 @@ class Reranker:
         retrieved_docs: Sequence[SearchResponse],
         batch_size: int = 32,
         show_progress_bar: bool = False,
-    ):
+        model=None,
+    ) -> Iterator[list[SearchResponse]]:
+        model = model or self.model
+        if model is None:
+            raise ValueError("A reranking model must be provided.")
+
         total = len(retrieved_docs)
         for i in range(0, total, batch_size):
             batch = retrieved_docs[i : i + batch_size]
             pairs = [(doc_list.query, doc.text) for doc_list in batch for doc in doc_list.matches]
 
-            scores = self.model.predict(
+            scores = model.predict(
                 pairs,
                 batch_size=batch_size,
                 show_progress_bar=show_progress_bar,
                 convert_to_numpy=True,
             )
+
+            if len(scores) != len(pairs):
+                raise RuntimeError("Model returned an unexpected number of scores.")
 
             idx = 0
             batch_result = []

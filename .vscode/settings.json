@@ -14,8 +14,10 @@
         "minversion",
         "modulos",
         "nbconvert",
+        "norecursedirs",
         "numpy",
         "Pathlib",
+        "pycache",
         "pycodestyle",
         "pyflakes",
         "pyproject",
@@ -28,10 +30,12 @@
         "reranked",
         "Reranker",
         "rerankers",
+        "reranking",
         "seaborn",
         "setuptools",
         "testpaths",
         "venv",
-        "virattt"
+        "virattt",
+        "xdist"
     ]
 }

@@ -21,17 +21,30 @@ dev = [
     "nbconvert>=7.17.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
     "seaborn>=0.13.2",
 ]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
+# Point explicitly to the top-level directories. No wildcards.
 testpaths = [
-    "packages/**/tests",
-    "services/**/tests"
+    "packages/search_core/tests",
+    # Add other service test paths explicitly as you build them:
+    # "services/search_api/tests",
+    # "services/ingestion_service/tests",
 ]
-addopts = "--tb=short --cov-report=term-missing"
 
-[tool.coverage.run]
-branch = true
-parallel = true  # Prevents simultaneous test runs from overriding each other's coverage data
+# Drastically limits disk scanning overhead
+norecursedirs = [
+    ".git",
+    ".uv",
+    ".venv",
+    ".pytest_cache",
+    "build",
+    "dist",
+    "__pycache__",
+    "node_modules"
+]
+
+addopts = "--tb=short"
