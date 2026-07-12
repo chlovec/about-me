@@ -36,6 +36,7 @@
         "testpaths",
         "venv",
         "virattt",
+        "VLLM",
         "xdist"
     ]
 }

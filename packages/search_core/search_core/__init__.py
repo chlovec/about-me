@@ -62,4 +62,7 @@ __all__ = [
     "UnifiedSparseAdapter",
     # Reranker
     "Reranker",
+    # Generators
+    "GeneratorConfig",
+    "RagGenerator",
 ]
