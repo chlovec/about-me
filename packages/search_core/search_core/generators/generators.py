@@ -17,10 +17,10 @@ class GeneratorConfig:
 
 
 class RagGenerator:
-    def __init__(self, config: GeneratorConfig):
+    def __init__(self, config: GeneratorConfig, client: OpenAI | None = None):
         self.config = config
         # Use OpenAI client to connect to the vLLM instance
-        self.client = OpenAI(base_url=self.config.base_url, api_key=self.config.api_key)
+        self.client = client or OpenAI(base_url=self.config.base_url, api_key=self.config.api_key)
 
     def answer_with_rag(
         self,
